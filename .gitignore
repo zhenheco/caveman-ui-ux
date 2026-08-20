@@ -1,0 +1,11 @@
+# audit run artifacts: screenshots and DOM dumps of whatever was audited. Never commit these.
+.caveman-ui-ux/
+
+# local config for ad-hoc runs
+caveman.config.yaml
+caveman.config.yml
+caveman.config.json
+
+node_modules/
+.DS_Store
+*.log

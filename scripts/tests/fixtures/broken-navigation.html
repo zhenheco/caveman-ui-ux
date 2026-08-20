@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Help centre index.">
+<title>Help centre</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #0b57d0; }
+  h2 { font-size: 22px; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <!-- Defect A: three links to files that do not exist -> TECH.LINK.BROKEN (HTTP 404). -->
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="./does-not-exist-1.html">Getting started</a></li>
+        <li><a href="./does-not-exist-2.html">Billing</a></li>
+        <li><a href="./does-not-exist-3.html">Contact support</a></li>
+        <li><a href="./does-not-exist-4.html">Status</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- Defect B: no <main> and no role="main" -> TECH.NAV.NO_MAIN. -->
+  <!-- Defect C: no <h1> anywhere on the page -> TECH.HEADING.MISSING_H1. -->
+  <div>
+    <h2>Popular articles</h2>
+    <p>Everything you need to know about issuing your first invoice, connecting a bank account,
+      and exporting a VAT summary.</p>
+
+    <!-- Defect D: an anchor with no text and no aria-label -> TECH.LINK.EMPTY_TEXT. -->
+    <p><a href="./does-not-exist-5.html"></a></p>
+
+    <h2>Still stuck?</h2>
+    <p>Our support queue is answered within one business day.</p>
+  </div>
+
+  <footer><p>Ledgerly Ltd.</p></footer>
+</div>
+</body>
+</html>

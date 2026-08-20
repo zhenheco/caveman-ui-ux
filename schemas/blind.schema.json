@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhenheco/caveman-ui-ux/schemas/blind.schema.json",
+  "title": "caveman-ui-ux blind evaluator response",
+  "description": "Stage C blind evaluator 的唯一回傳格式。由 `caveman ingest` 驗證後封存成 screens/<screen-id>/blind/<evaluator-id>.json，寫入後不可修改。回傳只能依據截圖與 blind payload 的 7 個欄位，不得含 route、URL、原始碼或頁面 title 等 context。",
+  "type": "object",
+  "required": ["screen_id", "evaluator", "answers", "dimensions", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "screen_id": {
+      "type": "string",
+      "pattern": "^scr_[0-9a-f]{12}$",
+      "description": "blind payload 給的 opaque screen id，必須原樣回填。"
+    },
+    "evaluator": {
+      "type": "object",
+      "description": "作答者身分，用於 consensus 與可追溯性。",
+      "required": ["id", "runtime", "model"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "本 run 內唯一的 evaluator id，例如 e1。" },
+        "runtime": { "type": "string", "enum": ["claude", "codex", "other"], "description": "執行 evaluator 的 runtime host。" },
+        "model": { "type": "string", "minLength": 1, "description": "實際作答的模型名稱。" }
+      }
+    },
+    "answers": {
+      "type": "object",
+      "description": "五個 caveman 問題的白話回答，加上不確定之處。用 report_locale 作答。",
+      "required": [
+        "what_is_this",
+        "who_is_it_for",
+        "what_can_i_get_or_do",
+        "what_should_i_do_next",
+        "why_should_i_trust_it",
+        "uncertainties"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "what_is_this": { "type": "string", "description": "這是什麼？" },
+        "who_is_it_for": { "type": "string", "description": "這是給誰的？" },
+        "what_can_i_get_or_do": { "type": "string", "description": "我能得到什麼或做什麼？" },
+        "what_should_i_do_next": { "type": "string", "description": "下一步要做什麼？" },
+        "why_should_i_trust_it": { "type": "string", "description": "為什麼可以相信？" },
+        "uncertainties": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "看不出來、只能猜的部分。空陣列代表沒有不確定之處。"
+        }
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "description": "九個 rubric dimension 的評分，全部必填。",
+      "required": [
+        "identity",
+        "audience",
+        "value",
+        "primary_action",
+        "visual_hierarchy",
+        "cognitive_simplicity",
+        "trust",
+        "navigation",
+        "language_clarity"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "identity": { "$ref": "#/$defs/dimension_score" },
+        "audience": { "$ref": "#/$defs/dimension_score" },
+        "value": { "$ref": "#/$defs/dimension_score" },
+        "primary_action": { "$ref": "#/$defs/dimension_score" },
+        "visual_hierarchy": { "$ref": "#/$defs/dimension_score" },
+        "cognitive_simplicity": { "$ref": "#/$defs/dimension_score" },
+        "trust": { "$ref": "#/$defs/dimension_score" },
+        "navigation": { "$ref": "#/$defs/dimension_score" },
+        "language_clarity": { "$ref": "#/$defs/dimension_score" }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "整體作答信心（0..1）。低於 0.60 的主觀 finding 不能單獨讓 gate 失敗。"
+    },
+    "_ingested_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "由 ingestBlind 在封存時附加的 ISO 8601 時間戳；evaluator 不應自行輸出。"
+    }
+  },
+  "$defs": {
+    "dimension_score": {
+      "type": "object",
+      "description": "單一 dimension 的評分與依據。",
+      "required": ["score", "rationale", "evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "0..10 整數分數，錨點見 references/rubric.md。"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "給這個分數的理由，只引用截圖看得到的東西。"
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" },
+          "description": "支持分數的 evidence；blind stage 通常是 screenshot_region、text 或 manual_note。可為空陣列，但高分或低分建議附證據。"
+        }
+      }
+    },
+    "evidence": {
+      "description": "canonical evidence union，以 type 欄位辨別（6 種）。",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "截圖上的一塊區域。",
+          "required": ["type", "box"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "screenshot_region" },
+            "screen_id": { "type": "string", "pattern": "^scr_[0-9a-f]{12}$", "description": "區域所屬的 screen id。" },
+            "path": { "type": "string", "description": "截圖檔路徑（run 目錄相對路徑）。" },
+            "box": { "$ref": "#/$defs/box" },
+            "note": { "type": "string", "description": "這塊區域說明了什麼。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "DOM 節點。",
+          "required": ["type", "selector"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "dom" },
+            "selector": { "type": "string", "description": "穩定 selector（優先 #id，否則 nth-of-type 路徑）。" },
+            "node_path": { "type": "string", "description": "節點在 DOM 樹中的路徑。" },
+            "html": { "type": "string", "description": "節點 outerHTML 片段（截斷）。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "量測數值。",
+          "required": ["type", "name", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "metric" },
+            "name": { "type": "string", "description": "指標名稱。" },
+            "value": { "type": ["number", "string", "boolean", "null"], "description": "指標值。" },
+            "unit": { "type": "string", "description": "單位，例如 px、ratio、ms。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "頁面上的文字。",
+          "required": ["type", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "text" },
+            "value": { "type": "string", "description": "引用的原文，不要翻譯。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "console 或 network log。",
+          "required": ["type", "source", "message"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "log" },
+            "source": { "type": "string", "enum": ["console", "network"], "description": "log 來源。" },
+            "message": { "type": "string", "description": "log 內容（已做 secret redaction）。" }
+          }
+        },
+        {
+          "type": "object",
+          "description": "人工或 agent 的觀察註記。",
+          "required": ["type", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "manual_note" },
+            "value": { "type": "string", "description": "註記內容。" }
+          }
+        }
+      ]
+    },
+    "box": {
+      "type": "object",
+      "description": "截圖座標框（px，相對於 viewport 截圖）。",
+      "required": ["x", "y", "w", "h"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "description": "左上角 x。" },
+        "y": { "type": "number", "minimum": 0, "description": "左上角 y。" },
+        "w": { "type": "number", "minimum": 0, "description": "寬度。" },
+        "h": { "type": "number", "minimum": 0, "description": "高度。" }
+      }
+    }
+  }
+}

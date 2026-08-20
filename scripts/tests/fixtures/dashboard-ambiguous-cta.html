@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Operations console overview.">
+<title>Operations console</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.6 system-ui, sans-serif; color: #14171a; background: #f7f8fa; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 22px; margin: 20px 0 12px; }
+  h2 { font-size: 17px; margin: 20px 0 8px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 8px; }
+  .card { flex: 1 1 45%; background: #fff; border: 1px solid #d0d5dd; border-radius: 6px; padding: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+  /* Six buttons, identical weight: no visual primary action. */
+  .actions button { flex: 1 1 30%; min-height: 44px; padding: 12px 10px; font-size: 14px;
+    font-weight: 600; color: #14171a; background: #e9edf3; border: 1px solid #b8c0cc; border-radius: 6px; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 24px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="./dashboard-ambiguous-cta.html">Console</a></li>
+        <li><a href="./dashboard-ambiguous-cta.html">Reports</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Operations console</h1>
+
+    <h2>Actions</h2>
+    <div class="actions">
+      <button type="button">Reconcile</button>
+      <button type="button">Sync ledger</button>
+      <button type="button">Export batch</button>
+      <button type="button">Run audit</button>
+      <button type="button">Notify team</button>
+      <button type="button">Close period</button>
+    </div>
+
+    <h2>Today</h2>
+    <div class="cards">
+      <div class="card"><strong>Open items</strong><p>48</p></div>
+      <div class="card"><strong>Unmatched</strong><p>12</p></div>
+      <div class="card"><strong>Pending approval</strong><p>7</p></div>
+      <div class="card"><strong>Exceptions</strong><p>3</p></div>
+    </div>
+  </main>
+
+  <footer><p>Internal console. Data refreshed hourly.</p></footer>
+</div>
+</body>
+</html>

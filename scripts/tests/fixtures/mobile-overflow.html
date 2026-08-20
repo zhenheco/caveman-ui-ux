@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Quarterly revenue by region.">
+<title>Quarterly revenue</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 26px; margin: 24px 0 12px; }
+  /* Defect: a rigid 520px block. At the 375px viewport documentScrollWidth > clientWidth.
+     At 1280px it fits, so TECH.OVERFLOW.HORIZONTAL must fire on mobile only. */
+  .rigid { min-width: 520px; border: 1px solid #d0d5dd; border-radius: 6px; padding: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #d0d5dd; padding: 8px 10px; text-align: left; white-space: nowrap; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main"><ul><li><a href="./mobile-overflow.html">Usage</a></li></ul></nav>
+  </header>
+
+  <main>
+    <h1>Quarterly revenue by region</h1>
+    <div class="rigid" id="rigid-table">
+      <table>
+        <caption>Revenue in thousands of USD</caption>
+        <thead>
+          <tr><th scope="col">Region</th><th scope="col">Q1</th><th scope="col">Q2</th><th scope="col">Q3</th><th scope="col">Q4</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>North America</td><td>1,204</td><td>1,388</td><td>1,502</td><td>1,610</td></tr>
+          <tr><td>Europe</td><td>902</td><td>988</td><td>1,041</td><td>1,120</td></tr>
+          <tr><td>Asia Pacific</td><td>760</td><td>844</td><td>931</td><td>1,008</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Figures are unaudited management accounts.</p>
+  </main>
+
+  <footer><p>Finance team, internal use.</p></footer>
+</div>
+</body>
+</html>

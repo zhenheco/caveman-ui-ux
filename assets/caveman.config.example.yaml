@@ -1,0 +1,139 @@
+# caveman-ui-ux 設定範例（caveman.config.yaml）
+# 放在要稽核的專案根目錄；`caveman.config.yml` / `caveman.config.json` 同樣被接受，
+# 也可以用 `--config <path>` 指定。整份檔案缺失時會退回 DEFAULT_CONFIG。
+#
+# 這個檔案只使用 lib/yaml.mjs 支援的 YAML 子集：
+#   2-space 縮排、nested maps、block sequences（- ）、inline flow sequences（[a, b]）、
+#   inline flow maps（{ k: v }）、plain / double-quoted scalars、整行 # 註解。
+# 不支援 |、>、anchors、multi-document。註解一律獨立成行。
+
+# schema 版本，目前固定 1。這是唯一必填欄位。
+version: 1
+
+# 報告輸出語言（report_locale），與被稽核頁面的語言（target_locale）無關。
+# 可用值：en、zh-TW、ja、vi；找不到時 fallback en。
+report_locale: zh-TW
+
+target:
+  # 受測站台 base URL。留 null 時必須在 CLI 傳入 url，否則 exit 2 (CONFIG)。
+  base_url: "http://localhost:3000"
+  # 要稽核的 route 清單，與 locales / viewports 做 cartesian product。
+  routes: ["/"]
+  # 目標語言。["auto"] 代表不做多語比對，只用站台預設語言跑一次。
+  # 給兩個以上才會產生 locale_matrix 與 I18N.* findings；第一個是 reference locale。
+  locales: [en, zh-TW, ja, vi]
+  # locale 對應的 URL 前綴；用於 resolveUrl 組網址與 normalizeRoute 去前綴。
+  # 例：["/en", "/zh-TW", "/ja", "/vi"]。留空表示站台用 cookie / header 決定語言。
+  locale_prefixes: []
+  # 稽核前要先啟動的 dev server 指令；null 表示站台已自行啟動。
+  # 字串形式（例 "npm run dev"）會依空白切成 argv；含空白或引號的參數會被切壞。
+  # 也接受字串陣列（例 ["pnpm", "--filter", "web app", "dev"]）：陣列直接當 argv 用，
+  # 不做 quote-splitting，是有引號/空白參數時唯一安全的寫法。
+  start_command: null
+  wait:
+    # Playwright waitUntil 策略：load、domcontentloaded、networkidle、commit。
+    strategy: networkidle
+    # 導航超時（毫秒）。
+    timeout_ms: 20000
+    # 導航完成後額外靜置時間（毫秒），等動畫與 lazy content 收斂。
+    settle_ms: 400
+  # 截圖前要點掉的 selector。只點這裡列的，工具不會自己猜 cookie banner。
+  dismiss_selectors: []
+  # Playwright storageState JSON 路徑，用來測登入後畫面。
+  storage_state: null
+  # 附加 HTTP headers（inline flow map），例如 { X-Preview-Token: abc }。
+  extra_http_headers: {}
+
+# 要截圖的 viewport 矩陣。id 會進 screen_id 與 finding id，改名等於改指紋。
+viewports:
+  # 手機：多數 overflow 與 tap target 問題只在這裡出現。
+  - { id: mobile, width: 375, height: 812, device_scale_factor: 2 }
+  # 平板。
+  - { id: tablet, width: 768, height: 1024, device_scale_factor: 2 }
+  # 桌機。
+  - { id: desktop, width: 1280, height: 800, device_scale_factor: 1 }
+
+browser:
+  # Playwright channel；本機 chrome 最穩（bundled chromium 可能版本不符）。
+  channel: chrome
+  # 直接指定瀏覽器執行檔；也可用 $CAVEMAN_CHROME_PATH 環境變數。
+  executable_path: null
+  # headless 執行。
+  headless: true
+  # 是否依 target locale 送 Accept-Language header。
+  locale_header: true
+  # color_scheme：light、dark、no-preference。
+  color_scheme: light
+  # reduced_motion：reduce、no-preference。截圖穩定性建議維持 reduce。
+  reduced_motion: reduce
+
+evaluation:
+  # Stage C blind first-impression test。
+  caveman: true
+  # Stage E agent heuristic review。
+  heuristic: true
+  # Stage D axe-core 稽核。
+  accessibility: true
+  # Stage D Lighthouse technical 分數（走 npx，未安裝則記 limitations）。
+  technical: true
+  # Lighthouse 重跑次數，取各 category 中位數；不要用單次結果做比較。
+  lighthouse_runs: 3
+  panel:
+    # 多位 evaluator 的 consensus 模式；歧異只會被記成 contradictions，不扣分。
+    enabled: false
+    # 例：[{ id: e1, runtime: claude, model: default }, { id: e2, runtime: codex, model: default }]
+    evaluators: []
+
+privacy:
+  # 截圖上傳是 opt-in，預設 false：這份範本不會替你簽同意書。
+  # 設 true 的意思是「同意把這個專案的截圖交給 blind evaluator（fresh-context subagent）」。
+  # Stage C blind first-impression test 一定要看到截圖才能作答，所以 false 時
+  # `caveman prepare` 會直接 exit 6 (PRIVACY)。
+  # 只想單次放行、不改設定檔：該次執行加 --allow-screenshot-upload。
+  # 截圖可能含真實資料（PII、金額、客戶名單），改成 true 前先確認你有權提供，
+  # 並用下面的 redact_selectors 把不該外流的區塊塗黑。
+  upload_screenshots: false
+  # 截圖前要塗黑的 selector（PII、金額、客戶名單）。
+  redact_selectors: []
+  # runs/ 目錄保留天數。清理由 `caveman prune` 執行，`capture` 開跑前也會自動先跑一次：
+  # 刪掉建立時間超過 N 天的 run 目錄，連同該 run staged 出去的 blind 截圖一起刪。
+  # 0 = 關閉清理，永久保留。
+  retention_days: 30
+
+# Quality gates（flat 拼法）。null = 不檢查該項。
+# 也接受 Master Plan 的 nested 拼法，loadConfig 會正規化成這裡的 flat 形式：
+#   gates: { caveman: { minimum: 75 }, critical_findings: { maximum: 0 } }
+gates:
+  # caveman 加權分數下限（0..100）。
+  caveman_minimum: 75
+  # agent heuristic 分數下限；預設不設門檻。
+  heuristic_minimum: null
+  # axe-core 推得的 accessibility 分數下限。
+  accessibility_minimum: 90
+  # Lighthouse technical 分數下限；Lighthouse 不可用時該 gate 記 skipped。
+  technical_minimum: 85
+  # 多語一致性分數下限；locales 少於 2 個時為 null。
+  multilingual_minimum: null
+  # blocker + critical findings 數量上限；低信心的主觀 finding 不單獨計入。
+  critical_maximum: 0
+  # evaluator confidence 下限（0..1）。
+  evaluator_confidence_minimum: 0.60
+
+composite:
+  # 綜合單一分數預設關閉：它只是溝通用摘要，永遠不取代 component gate。
+  enabled: false
+  # 啟用時的權重；實際計算會對非 null 的 component 重新正規化。
+  weights:
+    caveman: 0.35
+    heuristic_ux: 0.2
+    accessibility: 0.25
+    technical: 0.1
+    multilingual_consistency: 0.1
+
+rules:
+  # 要載入的 rule packs。只有 redistribution_reviewed: true 的 pack 可以列在這裡。
+  packs: [core]
+  # 要停用的 rule id，例如 [TECH.NAV.NO_LANDMARK]。
+  disabled: []
+  # 覆寫 severity，例如 { TECH.IMG.MISSING_ALT: minor }。
+  severity_overrides: {}

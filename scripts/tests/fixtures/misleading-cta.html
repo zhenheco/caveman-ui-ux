@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Download the 2026 tax deadline calendar.">
+<title>2026 tax deadline calendar</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 28px; margin: 24px 0 12px; }
+  h2 { font-size: 20px; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; max-width: 60ch; }
+  .cta { display: inline-block; min-height: 52px; padding: 16px 24px; background: #087443;
+    color: #fff; font-size: 18px; font-weight: 800; border: 0; border-radius: 6px; }
+  .paywall { border: 2px solid #087443; border-radius: 8px; padding: 16px; margin-top: 20px; background: #f2fbf6; }
+  .price { font-size: 24px; font-weight: 800; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #6b7280; border-radius: 4px; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main"><ul><li><a href="./misleading-cta.html">Downloads</a></li></ul></nav>
+  </header>
+
+  <main>
+    <h1>2026 tax deadline calendar</h1>
+    <p>Every filing date for solo accountants, on one page.</p>
+
+    <!-- Defect: the prominent CTA promises "Free download" but only reveals a paid signup. -->
+    <p><button class="cta" type="button">Free download</button></p>
+
+    <div class="paywall" id="paywall">
+      <h2>Start your paid Pro plan to download</h2>
+      <p class="price">USD 29 / month, billed annually. No free tier.</p>
+      <p>The calendar is only available to Pro subscribers. Your card is charged today.</p>
+      <form action="./index.html" method="get">
+        <label for="card">Card number</label>
+        <input id="card" name="card" type="text" inputmode="numeric" placeholder="4242 4242 4242 4242">
+        <p><button class="cta" type="submit">Subscribe for USD 29 / month</button></p>
+      </form>
+    </div>
+  </main>
+
+  <footer><p>Prices exclude VAT.</p></footer>
+</div>
+</body>
+</html>

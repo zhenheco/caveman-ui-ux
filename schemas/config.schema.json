@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhenheco/caveman-ui-ux/schemas/config.schema.json",
+  "title": "caveman-ui-ux configuration",
+  "description": "caveman.config.yaml / .yml / .json 的結構。除了 version 之外全部選填，缺的鍵由 DEFAULT_CONFIG 補齊。gates 同時接受 flat 與 nested 兩種拼法，loadConfig 會正規化成 flat。",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "設定檔 schema 版本，目前固定 1。"
+    },
+    "report_locale": {
+      "type": "string",
+      "minLength": 2,
+      "default": "en",
+      "description": "報告輸出語言（report_locale），與被稽核頁面的 target_locale 無關。內建 en、zh-TW、ja、vi；未知值走 fallback chain 到 en。"
+    },
+    "target": {
+      "type": "object",
+      "description": "受測站台與抓取行為。",
+      "default": {},
+      "properties": {
+        "base_url": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "站台 base URL。null 時必須由 CLI 參數提供 url，否則 exit 2 (CONFIG)。"
+        },
+        "routes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["/"],
+          "description": "要稽核的 route 清單；與 locales、viewports 做 cartesian product。"
+        },
+        "locales": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["auto"],
+          "description": "目標語言清單。[\"auto\"] 代表只用站台預設語言跑一次，不做多語比對。第一個元素是 reference locale。"
+        },
+        "locale_prefixes": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              { "type": "string" },
+              { "type": "object" }
+            ]
+          },
+          "default": [],
+          "description": "locale 的 URL 前綴。可為字串（例 \"/zh-TW\"）或物件（例 { locale: zh-TW, prefix: /zh-tw }）。normalizeRoute 用它去前綴，resolveUrl 用它組網址。"
+        },
+        "start_command": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ],
+          "default": null,
+          "description": "稽核前要啟動 dev server 的指令；null 表示站台已在跑。字串會依空白切成 argv；字串陣列直接當 argv 用，不做 quote-splitting。"
+        },
+        "wait": {
+          "type": "object",
+          "description": "導航等待策略。",
+          "default": {},
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": ["load", "domcontentloaded", "networkidle", "commit"],
+              "default": "networkidle",
+              "description": "Playwright waitUntil 策略。"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 20000,
+              "description": "導航超時（毫秒）。"
+            },
+            "settle_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 400,
+              "description": "導航完成後的額外靜置時間（毫秒），等動畫與 lazy content 收斂。"
+            }
+          }
+        },
+        "dismiss_selectors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "截圖前要點掉的 selector。工具只點這裡列的，不自行猜測 cookie banner。"
+        },
+        "storage_state": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Playwright storageState JSON 路徑，用來稽核登入後畫面。"
+        },
+        "extra_http_headers": {
+          "type": "object",
+          "default": {},
+          "description": "附加 HTTP headers（key 為 header 名稱，值為字串）。"
+        }
+      }
+    },
+    "viewports": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/viewport" },
+      "default": [
+        { "id": "mobile", "width": 375, "height": 812, "device_scale_factor": 2 },
+        { "id": "tablet", "width": 768, "height": 1024, "device_scale_factor": 2 },
+        { "id": "desktop", "width": 1280, "height": 800, "device_scale_factor": 1 }
+      ],
+      "description": "截圖 viewport 矩陣。id 會進 screen_id 與 finding id，改名等於改指紋。"
+    },
+    "browser": {
+      "type": "object",
+      "description": "瀏覽器啟動與 context 設定。",
+      "default": {},
+      "properties": {
+        "channel": {
+          "type": ["string", "null"],
+          "default": "chrome",
+          "description": "Playwright channel（chrome、msedge…）。本機 chrome 最穩定。"
+        },
+        "executable_path": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "直接指定瀏覽器執行檔；也可用 $CAVEMAN_CHROME_PATH。"
+        },
+        "headless": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否 headless 執行。"
+        },
+        "locale_header": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否依 target locale 送 Accept-Language header。"
+        },
+        "color_scheme": {
+          "type": "string",
+          "enum": ["light", "dark", "no-preference"],
+          "default": "light",
+          "description": "prefers-color-scheme 模擬值。"
+        },
+        "reduced_motion": {
+          "type": "string",
+          "enum": ["reduce", "no-preference"],
+          "default": "reduce",
+          "description": "prefers-reduced-motion 模擬值；reduce 讓截圖更穩定。"
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "description": "各 evaluation stage 的開關。",
+      "default": {},
+      "properties": {
+        "caveman": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stage C blind first-impression test。"
+        },
+        "heuristic": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stage E agent heuristic review。"
+        },
+        "accessibility": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stage D axe-core 稽核。"
+        },
+        "technical": {
+          "type": "boolean",
+          "default": true,
+          "description": "Stage D Lighthouse technical 分數。"
+        },
+        "lighthouse_runs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Lighthouse 重跑次數，取各 category 中位數。"
+        },
+        "panel": {
+          "type": "object",
+          "description": "多 evaluator consensus 設定。",
+          "default": {},
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "是否啟用 evaluator panel。"
+            },
+            "evaluators": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  { "type": "string" },
+                  { "type": "object" }
+                ]
+              },
+              "default": [],
+              "description": "evaluator 清單。可為 id 字串或 { id, runtime, model } 物件。"
+            }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "description": "隱私與保存期限。",
+      "default": {},
+      "properties": {
+        "upload_screenshots": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否允許把截圖交給 blind evaluator。這是明確同意開關；false 時 `caveman prepare` 會 exit 6 (PRIVACY)。"
+        },
+        "redact_selectors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "截圖前要塗黑的 selector（PII、金額、客戶名單）。"
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 30,
+          "description": ".caveman-ui-ux/runs/ 保留天數。由 `caveman prune` 執行清理，`capture` 開跑前也會自動先跑一次：刪掉建立時間超過 N 天的 run 目錄，連同該 run staged 出去的 blind 截圖。0 = 關閉清理。"
+        }
+      }
+    },
+    "gates": {
+      "description": "Quality gates。同時接受 flat（SPEC-001 §4）與 nested（Master Plan §6）兩種拼法；不要混用。null 代表不檢查該項。",
+      "default": {
+        "caveman_minimum": 75,
+        "heuristic_minimum": null,
+        "accessibility_minimum": 90,
+        "technical_minimum": 85,
+        "multilingual_minimum": null,
+        "critical_maximum": 0,
+        "evaluator_confidence_minimum": 0.6
+      },
+      "anyOf": [
+        { "$ref": "#/$defs/gates_flat" },
+        { "$ref": "#/$defs/gates_nested" }
+      ]
+    },
+    "composite": {
+      "type": "object",
+      "description": "綜合單一分數。只是溝通用摘要，永不取代 component score 也不驅動 gate。",
+      "default": {},
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否計算 composite score。"
+        },
+        "weights": {
+          "type": "object",
+          "description": "composite 權重；計算時會對非 null 的 component 重新正規化。",
+          "default": {},
+          "properties": {
+            "caveman": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.35, "description": "caveman 權重。" },
+            "heuristic_ux": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.2, "description": "heuristic UX 權重。" },
+            "accessibility": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.25, "description": "accessibility 權重。" },
+            "technical": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.1, "description": "technical 權重。" },
+            "multilingual_consistency": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.1, "description": "multilingual consistency 權重。" }
+          }
+        }
+      }
+    },
+    "rules": {
+      "type": "object",
+      "description": "rule pack 載入與覆寫。",
+      "default": {},
+      "properties": {
+        "packs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["core"],
+          "description": "要載入的 rule pack id。只有 redistribution_reviewed: true 的 pack 可列在這裡。"
+        },
+        "disabled": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "要停用的 rule id。"
+        },
+        "severity_overrides": {
+          "type": "object",
+          "default": {},
+          "description": "rule id 到 severity 的覆寫表，值必須是 blocker|critical|major|minor|info。"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "viewport": {
+      "type": "object",
+      "description": "單一 viewport 定義。",
+      "required": ["id", "width", "height"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "viewport 識別碼，會進 screen_id 與 finding id。" },
+        "width": { "type": "integer", "minimum": 1, "description": "CSS 寬度（px）。" },
+        "height": { "type": "integer", "minimum": 1, "description": "CSS 高度（px）。" },
+        "device_scale_factor": { "type": "number", "minimum": 0.1, "default": 1, "description": "device pixel ratio。" }
+      }
+    },
+    "gates_flat": {
+      "type": "object",
+      "description": "flat 拼法（正規化後的內部形式）。",
+      "additionalProperties": false,
+      "properties": {
+        "caveman_minimum": { "$ref": "#/$defs/gate_score", "description": "caveman 加權分數下限。" },
+        "heuristic_minimum": { "$ref": "#/$defs/gate_score", "description": "heuristic UX 分數下限。" },
+        "accessibility_minimum": { "$ref": "#/$defs/gate_score", "description": "accessibility 分數下限。" },
+        "technical_minimum": { "$ref": "#/$defs/gate_score", "description": "technical 分數下限；Lighthouse 不可用時記 skipped。" },
+        "multilingual_minimum": { "$ref": "#/$defs/gate_score", "description": "多語一致性分數下限。" },
+        "critical_maximum": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "default": 0,
+          "description": "blocker + critical findings 數量上限；低信心的主觀 finding 不單獨計入。"
+        },
+        "evaluator_confidence_minimum": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0.6,
+          "description": "evaluator confidence 下限（0..1）。"
+        }
+      }
+    },
+    "gates_nested": {
+      "type": "object",
+      "description": "nested 拼法（Master Plan §6）。loadConfig 會轉成 flat：caveman|heuristic|accessibility|technical|multilingual → .minimum，critical_findings → .maximum，evaluator_confidence → .minimum。",
+      "additionalProperties": false,
+      "properties": {
+        "caveman": { "$ref": "#/$defs/gate_minimum_block", "description": "caveman 分數 gate。" },
+        "heuristic": { "$ref": "#/$defs/gate_minimum_block", "description": "heuristic UX 分數 gate。" },
+        "accessibility": { "$ref": "#/$defs/gate_minimum_block", "description": "accessibility 分數 gate。" },
+        "technical": { "$ref": "#/$defs/gate_minimum_block", "description": "technical 分數 gate。" },
+        "multilingual": { "$ref": "#/$defs/gate_minimum_block", "description": "多語一致性分數 gate。" },
+        "critical_findings": {
+          "type": "object",
+          "description": "critical findings 數量 gate。",
+          "additionalProperties": false,
+          "properties": {
+            "maximum": { "type": ["integer", "null"], "minimum": 0, "description": "blocker + critical findings 數量上限。" }
+          }
+        },
+        "evaluator_confidence": {
+          "type": "object",
+          "description": "evaluator confidence gate。",
+          "additionalProperties": false,
+          "properties": {
+            "minimum": { "type": ["number", "null"], "minimum": 0, "maximum": 1, "description": "confidence 下限（0..1）。" }
+          }
+        }
+      }
+    },
+    "gate_minimum_block": {
+      "type": "object",
+      "description": "nested gate 區塊，只有 minimum 一個鍵。",
+      "additionalProperties": false,
+      "properties": {
+        "minimum": { "$ref": "#/$defs/gate_score", "description": "分數下限（0..100）。" }
+      }
+    },
+    "gate_score": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 100,
+      "description": "0..100 的門檻分數；null 表示不檢查。"
+    }
+  }
+}

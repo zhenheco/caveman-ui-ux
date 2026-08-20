@@ -1,0 +1,26 @@
+# Descriptive metadata only. Codex / OpenAI agents read SKILL.md as the single source of
+# truth for this skill: the workflow, the blind protocol, the gates and the exact CLI
+# invocations all live there. Nothing in this file is a guarantee about a schema, a runtime
+# API or a validator we can verify from here, and no tool is required to consume it. If this
+# file and SKILL.md ever disagree, SKILL.md wins. Keep it in the plain YAML subset that
+# lib/yaml.mjs can parse: 2-space maps, "- " sequences, inline flow, plain or double-quoted
+# scalars, no block scalars.
+name: caveman-ui-ux
+version: 1.0.0
+entrypoint: SKILL.md
+description: "Blind-first UI/UX audit skill. A dependency-free Node CLI captures screenshots and deterministic evidence (axe-core, Lighthouse, DOM checks); the agent is the evaluator, and the Caveman first-impression stage runs in a fresh-context subagent that sees one screenshot and nothing else."
+runtime: { host_env: CAVEMAN_RUNTIME_HOST, host_value: codex, cli: "node scripts/caveman.mjs" }
+commands:
+  - { name: init, description: "Write caveman.config.yaml from the example config, then install the agent adapters." }
+  - { name: install, description: "Install or update agent adapters and write .caveman-ui-ux/install-manifest.json." }
+  - { name: doctor, description: "Check node, Playwright, browser, axe cache, Lighthouse, config, schemas, locale completeness and rule packs." }
+  - { name: capture, description: "Stages A+B: render the viewport matrix, seal screenshots and emit blind payloads." }
+  - { name: "caveman prepare", description: "Print the blind payloads and ready-to-paste evaluator prompts for fresh-context subagents." }
+  - { name: "caveman ingest", description: "Validate one blind evaluator response against schemas/blind.schema.json and seal it immutably." }
+  - { name: evidence, description: "Stage D: run axe-core, DOM checks, link checks and the optional Lighthouse adapter." }
+  - { name: "heuristic ingest", description: "Validate and store the Stage E full-context heuristic findings produced by the agent." }
+  - { name: score, description: "Stages F+G+H: multilingual matrix, consensus, audit.json, gate evaluation and exit code." }
+  - { name: report, description: "Re-render report.md and the self-contained report.html from audit.json in any report locale." }
+  - { name: audit, description: "Run capture, evidence, score and report end to end; --no-llm is the deterministic CI path." }
+  - { name: verify, description: "Re-capture the original coordinates and diff finding statuses after a fix." }
+  - { name: rules, description: "List rule packs or check them for duplicate ids, missing fields and license metadata." }

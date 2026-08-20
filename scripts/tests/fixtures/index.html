@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="caveman-ui-ux golden fixtures index.">
+<title>caveman-ui-ux golden fixtures</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.7 system-ui, "Noto Sans TC", sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 26px; margin: 20px 0 8px; }
+  h2 { font-size: 18px; margin: 24px 0 8px; }
+  ol { padding-left: 20px; }
+  li { margin: 0 0 10px; }
+  li a { display: inline-block; padding: 4px 0; font-weight: 700; color: #0b57d0; }
+  .note { display: block; color: #333a42; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 28px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main"><ul><li><a href="./index.html">Fixtures index</a></li></ul></nav>
+  </header>
+
+  <main>
+    <h1>caveman-ui-ux golden fixtures</h1>
+    <p>Offline, self-contained pages used by <code>scripts/tests/e2e.test.mjs</code>. Each page
+      carries one deliberate defect.</p>
+
+    <h2>Fixtures</h2>
+    <ol>
+      <li><a href="./clear-landing.html">clear-landing.html</a>
+        <span class="note">控制組：結構、標籤、對比、行動呼籲都正確，不應產生任何 TECH.* finding。</span></li>
+      <li><a href="./vague-slogan.html">vague-slogan.html</a>
+        <span class="note">技術面乾淨，但文案全是空話，看不出產品、對象與價值（僅盲測可發現）。</span></li>
+      <li><a href="./dashboard-ambiguous-cta.html">dashboard-ambiguous-cta.html</a>
+        <span class="note">儀表板上六顆權重相同的按鈕，沒有視覺上的主要行動。</span></li>
+      <li><a href="./form-missing-labels.html">form-missing-labels.html</a>
+        <span class="note">表單只有 placeholder，沒有 label 或 aria-label：TECH.FORM.MISSING_LABEL。</span></li>
+      <li><a href="./mobile-overflow.html">mobile-overflow.html</a>
+        <span class="note">固定 520px 寬的表格區塊，只在 375px 產生 TECH.OVERFLOW.HORIZONTAL。</span></li>
+      <li><a href="./misleading-cta.html">misleading-cta.html</a>
+        <span class="note">按鈕寫「Free download」，實際導向付費訂閱面板，標籤與結果不一致。</span></li>
+      <li><a href="./multilingual-residual-en.html">multilingual-residual-en.html</a>
+        <span class="note">lang 是 zh-TW 但殘留大量未翻譯英文，且 hreflang 缺自我參照。</span></li>
+      <li><a href="./ja-text-expansion.html">ja-text-expansion.html</a>
+        <span class="note">日文字數約為控制組的 1.5 倍，導覽換行破版並含小於 24px 的控制項。</span></li>
+      <li><a href="./vi-cta-overflow.html">vi-cta-overflow.html</a>
+        <span class="note">越南文 CTA 標籤過長，在 nowrap 固定寬度按鈕內於 375px 溢出。</span></li>
+      <li><a href="./low-contrast.html">low-contrast.html</a>
+        <span class="note">正文 #b9b9b9、CTA #8fd0ff 皆在白底上，對比遠低於 WCAG AA。</span></li>
+      <li><a href="./broken-navigation.html">broken-navigation.html</a>
+        <span class="note">三個 404 連結、一個空文字連結，且缺少 main 與 h1。</span></li>
+      <li><a href="./authenticated-app.html">authenticated-app.html</a>
+        <span class="note">模擬登入牆；說明真實情境須用 target.storage_state 且絕不寫入 artifacts。</span></li>
+    </ol>
+  </main>
+
+  <footer><p>caveman-ui-ux test fixtures. No external requests, no tracking.</p></footer>
+</div>
+</body>
+</html>

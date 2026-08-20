@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Pricing for the Ledgerly plans.">
+<title>Pricing</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  /* Defect: body text #b9b9b9 on #ffffff is ~1.9:1 and the CTA #8fd0ff on #ffffff is ~1.7:1.
+     Both are far below WCAG AA -> axe color-contrast violations. Structure is otherwise clean. */
+  body { margin: 0; font: 16px/1.7 system-ui, sans-serif; color: #b9b9b9; background: #ffffff; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #b9b9b9; }
+  h1 { font-size: 28px; margin: 24px 0 12px; color: #b9b9b9; }
+  h2 { font-size: 19px; margin: 24px 0 8px; color: #b9b9b9; }
+  p, li { margin: 0 0 10px; }
+  .cta { display: inline-block; min-height: 48px; padding: 14px 20px; background: #ffffff;
+    color: #8fd0ff; font-size: 18px; font-weight: 700; border: 1px solid #dcdcdc;
+    border-radius: 6px; text-decoration: none; }
+  footer { border-top: 1px solid #ebebeb; margin-top: 32px; padding: 16px 0; color: #b9b9b9; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main"><ul><li><a href="./low-contrast.html">Overview</a></li></ul></nav>
+  </header>
+
+  <main>
+    <h1>Simple pricing</h1>
+    <p>One plan, every feature, no per-invoice fees. Cancel whenever you like.</p>
+    <p><a class="cta" href="./low-contrast.html">Start the free trial</a></p>
+
+    <h2>What is included</h2>
+    <ul>
+      <li>Unlimited invoices and clients</li>
+      <li>Automatic payment reminders on day 7, 14 and 30</li>
+      <li>VAT summary export</li>
+      <li>Email support within one business day</li>
+    </ul>
+
+    <h2>Questions</h2>
+    <p>Billing runs monthly on the day you signed up. Annual billing saves two months.</p>
+  </main>
+
+  <footer><p>Ledgerly Ltd. Prices exclude VAT.</p></footer>
+</div>
+</body>
+</html>

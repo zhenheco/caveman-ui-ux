@@ -1,0 +1,467 @@
+# caveman-ui-ux core rule pack
+# Loaded by lib/rules.mjs; validated by `node scripts/caveman.mjs rules check`.
+# kind values: blind | heuristic | deterministic | multilingual
+# severity_default values: blocker | critical | major | minor | info
+# testability values: deterministic | subjective
+# evidence.accepted values: screenshot_region | dom | metric | text | log | manual_note
+# NOTE: this file is parsed by the hand-rolled YAML subset parser in lib/yaml.mjs.
+# Allowed syntax only: 2-space indent, nested maps, block sequences, inline flow
+# sequences and maps, plain and double-quoted scalars, full-line # comments.
+id: core
+version: 1.0.0
+source_url: "https://github.com/zhenheco/caveman-ui-ux"
+source_commit: local
+license: MIT
+attribution_file: references/licenses.md
+redistribution_reviewed: true
+rules:
+  # ---------------------------------------------------------------------------
+  # CAVEMAN.* — blind first-impression dimensions (Stage C, one rule per dimension)
+  # ---------------------------------------------------------------------------
+  - id: CAVEMAN.IDENTITY.001
+    version: 1.0.0
+    category: identity
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Visitor cannot tell what the product is
+    dimension: identity
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.AUDIENCE.001
+    version: 1.0.0
+    category: audience
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Visitor cannot tell who the product is for
+    dimension: audience
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.VALUE.001
+    version: 1.0.0
+    category: value
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Visitor cannot tell what they get from this screen
+    dimension: value
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.PRIMARY_ACTION.001
+    version: 1.0.0
+    category: primary_action
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Visitor cannot tell what to do next
+    dimension: primary_action
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.VISUAL_HIERARCHY.001
+    version: 1.0.0
+    category: visual_hierarchy
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: The most important information is not seen first
+    dimension: visual_hierarchy
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.COGNITIVE_SIMPLICITY.001
+    version: 1.0.0
+    category: cognitive_simplicity
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Understanding this screen needs too much reasoning
+    dimension: cognitive_simplicity
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.TRUST.001
+    version: 1.0.0
+    category: trust
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Visitor has no visible reason to believe the claims
+    dimension: trust
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.NAVIGATION.001
+    version: 1.0.0
+    category: navigation
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Visitor cannot tell how to move on or go back
+    dimension: navigation
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: CAVEMAN.LANGUAGE_CLARITY.001
+    version: 1.0.0
+    category: language_clarity
+    kind: blind
+    severity_default: major
+    localizable: true
+    title: Wording is indirect or full of jargon
+    dimension: language_clarity
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  # ---------------------------------------------------------------------------
+  # TECH.* — deterministic checks (Stage D, emitted by lib/checks.mjs)
+  # ---------------------------------------------------------------------------
+  - id: TECH.TARGET.UNREACHABLE
+    version: 1.0.0
+    category: target
+    kind: deterministic
+    severity_default: blocker
+    localizable: true
+    title: Target screen could not be loaded
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [log, metric, manual_note] }
+    testability: deterministic
+  - id: TECH.OVERFLOW.HORIZONTAL
+    version: 1.0.0
+    category: overflow
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: Page scrolls horizontally at this viewport
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [metric, dom, screenshot_region] }
+    testability: deterministic
+  - id: TECH.TAP_TARGET.SMALL
+    version: 1.0.0
+    category: tap_target
+    kind: deterministic
+    severity_default: minor
+    localizable: true
+    title: Interactive element is smaller than 24px
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom, metric] }
+    testability: deterministic
+  - id: TECH.HEADING.MISSING_H1
+    version: 1.0.0
+    category: heading
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: Screen has no h1 heading
+    applicability: { page_types: [landing, product, docs, dashboard] }
+    evidence: { accepted: [dom, text] }
+    testability: deterministic
+  - id: TECH.HEADING.MULTIPLE_H1
+    version: 1.0.0
+    category: heading
+    kind: deterministic
+    severity_default: minor
+    localizable: true
+    title: Screen has more than one h1 heading
+    applicability: { page_types: [landing, product, docs, dashboard] }
+    evidence: { accepted: [dom, text] }
+    testability: deterministic
+  - id: TECH.HEADING.SKIPPED_LEVEL
+    version: 1.0.0
+    category: heading
+    kind: deterministic
+    severity_default: minor
+    localizable: true
+    title: Heading levels skip a level
+    applicability: { page_types: [landing, product, docs, dashboard] }
+    evidence: { accepted: [dom, text] }
+    testability: deterministic
+  - id: TECH.FORM.MISSING_LABEL
+    version: 1.0.0
+    category: form
+    kind: deterministic
+    severity_default: critical
+    localizable: true
+    title: Form control has no programmatic label
+    applicability: { page_types: [form, landing, product, dashboard] }
+    evidence: { accepted: [dom, text] }
+    testability: deterministic
+  - id: TECH.LINK.BROKEN
+    version: 1.0.0
+    category: link
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: Link target returns an error
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom, metric, log] }
+    testability: deterministic
+  - id: TECH.LINK.EMPTY_TEXT
+    version: 1.0.0
+    category: link
+    kind: deterministic
+    severity_default: minor
+    localizable: true
+    title: Link has no accessible text
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: TECH.IMG.MISSING_ALT
+    version: 1.0.0
+    category: img
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: Image has no alt attribute
+    applicability: { page_types: [landing, product, docs, dashboard] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: TECH.LANG.MISSING
+    version: 1.0.0
+    category: lang
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: The html element has no lang attribute
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: TECH.LANG.MISMATCH
+    version: 1.0.0
+    category: lang
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: Declared lang contradicts the dominant script of the visible text
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom, metric, text] }
+    testability: deterministic
+  - id: TECH.META.MISSING_VIEWPORT
+    version: 1.0.0
+    category: meta
+    kind: deterministic
+    severity_default: major
+    localizable: true
+    title: No viewport meta tag is declared
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: TECH.NAV.NO_LANDMARK
+    version: 1.0.0
+    category: nav
+    kind: deterministic
+    severity_default: minor
+    localizable: true
+    title: Screen has no navigation landmark
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: TECH.NAV.NO_MAIN
+    version: 1.0.0
+    category: nav
+    kind: deterministic
+    severity_default: minor
+    localizable: true
+    title: Screen has no main landmark
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  # ---------------------------------------------------------------------------
+  # I18N.* — multilingual consistency (Stage F, emitted by lib/multilingual.mjs)
+  # ---------------------------------------------------------------------------
+  - id: I18N.MISSING_ROUTE
+    version: 1.0.0
+    category: coverage
+    kind: multilingual
+    severity_default: major
+    localizable: true
+    title: A configured locale has no successful screen for this route
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [manual_note, metric] }
+    testability: deterministic
+  - id: I18N.RESIDUAL_LANGUAGE
+    version: 1.0.0
+    category: translation
+    kind: multilingual
+    severity_default: major
+    localizable: true
+    title: Untranslated Latin text remains in a non-Latin locale
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [text, metric] }
+    testability: deterministic
+  - id: I18N.CTA_PARITY
+    version: 1.0.0
+    category: parity
+    kind: multilingual
+    severity_default: major
+    localizable: true
+    title: Call to action count or primary CTA differs from the reference locale
+    applicability: { page_types: [landing, product, dashboard, form] }
+    evidence: { accepted: [text, dom, metric] }
+    testability: deterministic
+  - id: I18N.OVERFLOW
+    version: 1.0.0
+    category: layout
+    kind: multilingual
+    severity_default: major
+    localizable: true
+    title: Layout overflows in this locale but not in the reference locale
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [metric, screenshot_region] }
+    testability: deterministic
+  - id: I18N.HREFLANG.MISSING
+    version: 1.0.0
+    category: hreflang
+    kind: multilingual
+    severity_default: major
+    localizable: true
+    title: Multiple locales are configured but no hreflang links are declared
+    applicability: { page_types: [landing, product, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: I18N.HREFLANG.NO_SELF
+    version: 1.0.0
+    category: hreflang
+    kind: multilingual
+    severity_default: minor
+    localizable: true
+    title: The hreflang set has no self referencing entry
+    applicability: { page_types: [landing, product, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: I18N.HREFLANG.NO_XDEFAULT
+    version: 1.0.0
+    category: hreflang
+    kind: multilingual
+    severity_default: info
+    localizable: true
+    title: The hreflang set has no x-default entry
+    applicability: { page_types: [landing, product, docs] }
+    evidence: { accepted: [dom] }
+    testability: deterministic
+  - id: I18N.LANG_ATTR_MISMATCH
+    version: 1.0.0
+    category: lang
+    kind: multilingual
+    severity_default: major
+    localizable: true
+    title: The html lang base tag does not match the target locale
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [dom, text] }
+    testability: deterministic
+  - id: I18N.TEXT_EXPANSION
+    version: 1.0.0
+    category: layout
+    kind: multilingual
+    severity_default: minor
+    localizable: true
+    title: Translated copy expands far beyond the reference locale and strains the layout
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [metric, screenshot_region] }
+    testability: deterministic
+  # ---------------------------------------------------------------------------
+  # UX.* — agent heuristic review (Stage E, ingested via `heuristic ingest`)
+  # ---------------------------------------------------------------------------
+  - id: UX.CTA.AMBIGUOUS_PRIMARY
+    version: 1.0.0
+    category: cta
+    kind: heuristic
+    severity_default: major
+    localizable: true
+    title: No single primary action stands out
+    dimension: primary_action
+    applicability: { page_types: [landing, product, dashboard, form] }
+    evidence: { accepted: [screenshot_region, dom, text] }
+    testability: subjective
+  - id: UX.CTA.MISLEADING_LABEL
+    version: 1.0.0
+    category: cta
+    kind: heuristic
+    severity_default: major
+    localizable: true
+    title: Action label does not describe what happens next
+    dimension: trust
+    applicability: { page_types: [landing, product, dashboard, form] }
+    evidence: { accepted: [screenshot_region, dom, text] }
+    testability: subjective
+  - id: UX.COPY.JARGON
+    version: 1.0.0
+    category: copy
+    kind: heuristic
+    severity_default: minor
+    localizable: true
+    title: Copy relies on jargon a first time visitor cannot decode
+    dimension: language_clarity
+    applicability: { page_types: [landing, product, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: UX.COPY.VAGUE_VALUE
+    version: 1.0.0
+    category: copy
+    kind: heuristic
+    severity_default: major
+    localizable: true
+    title: Value proposition is generic and says nothing specific
+    dimension: value
+    applicability: { page_types: [landing, product, docs] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: UX.HIERARCHY.COMPETING_EMPHASIS
+    version: 1.0.0
+    category: hierarchy
+    kind: heuristic
+    severity_default: minor
+    localizable: true
+    title: Too many elements compete for first attention
+    dimension: visual_hierarchy
+    applicability: { page_types: [landing, product, dashboard] }
+    evidence: { accepted: [screenshot_region, dom] }
+    testability: subjective
+  - id: UX.LOAD.COGNITIVE_OVERLOAD
+    version: 1.0.0
+    category: load
+    kind: heuristic
+    severity_default: major
+    localizable: true
+    title: The screen asks the visitor to process too much at once
+    dimension: cognitive_simplicity
+    applicability: { page_types: [landing, product, dashboard, form, docs] }
+    evidence: { accepted: [screenshot_region, metric, text] }
+    testability: subjective
+  - id: UX.TRUST.NO_SOCIAL_PROOF
+    version: 1.0.0
+    category: trust
+    kind: heuristic
+    severity_default: minor
+    localizable: true
+    title: No credibility signal supports the claims on screen
+    dimension: trust
+    applicability: { page_types: [landing, product] }
+    evidence: { accepted: [screenshot_region, text] }
+    testability: subjective
+  - id: UX.NAV.NO_WAY_BACK
+    version: 1.0.0
+    category: nav
+    kind: heuristic
+    severity_default: major
+    localizable: true
+    title: No visible way to go back or exit the current step
+    dimension: navigation
+    applicability: { page_types: [dashboard, form, docs, product] }
+    evidence: { accepted: [screenshot_region, dom] }
+    testability: subjective
+  - id: UX.FORM.UNEXPLAINED_FIELD
+    version: 1.0.0
+    category: form
+    kind: heuristic
+    severity_default: minor
+    localizable: true
+    title: A form asks for data without explaining why it is needed
+    dimension: cognitive_simplicity
+    applicability: { page_types: [form, product] }
+    evidence: { accepted: [screenshot_region, dom, text] }
+    testability: subjective

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="給獨立會計師的發票追蹤工具。">
+<title>Ledgerly 發票追蹤</title>
+<!-- Defect: hreflang set has no self-reference for zh-TW -> I18N.HREFLANG.NO_SELF. -->
+<link rel="alternate" hreflang="en" href="./clear-landing.html">
+<link rel="alternate" hreflang="ja" href="./ja-text-expansion.html">
+<link rel="alternate" hreflang="vi" href="./vi-cta-overflow.html">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.8 system-ui, "Noto Sans TC", sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 27px; margin: 24px 0 12px; }
+  h2 { font-size: 19px; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; max-width: 60ch; }
+  .cta { display: inline-block; min-height: 48px; padding: 14px 20px; background: #0b57d0;
+    color: #fff; font-weight: 700; border-radius: 6px; text-decoration: none; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="主導覽"><ul><li><a href="./multilingual-residual-en.html">方案</a></li></ul></nav>
+  </header>
+
+  <main>
+    <h1>一分鐘內寄出發票</h1>
+    <p>Ledgerly 是給獨立會計師的發票追蹤工具。</p>
+    <p><a class="cta" href="./multilingual-residual-en.html">開始免費試用</a></p>
+
+    <!-- Defect: large untranslated English blocks push script_ratios.latin above 0.35
+         while lang="zh-TW" -> I18N.RESIDUAL_LANGUAGE. -->
+    <h2>Billing and reconciliation</h2>
+    <p>Ledgerly automatically reconciles every incoming bank transfer against the open invoices
+      for that client, so you never have to match payments by hand again. Reminders are sent on
+      day 7, day 14 and day 30 after the due date, and each reminder is logged against the
+      client record for your audit trail.</p>
+
+    <h2>適合誰使用</h2>
+    <p>如果你是一個人執業的記帳士或會計師，每個月要開五到五十張發票，又不想再用試算表追款，
+      Ledgerly 就是為你設計的。你只要輸入工時與費用，系統會自動產生發票、寄給客戶，並在到期
+      之後持續提醒對方付款，你不需要在週末晚上手寫催款信。</p>
+
+    <h2>如何開始</h2>
+    <p>註冊之後先匯入客戶名單，選擇你的幣別與稅率，再把銀行帳戶連上來對帳。整個設定過程大約
+      十分鐘，不需要工程師協助，也不需要另外安裝任何軟體。前十四天完全免費，期間內取消不會
+      收取任何費用。</p>
+
+    <h2>常見問題</h2>
+    <p>可以匯出資料嗎？可以，所有發票與客戶資料都能匯出成 CSV，隨時帶走。支援哪些付款方式？
+      信用卡、金融卡與銀行轉帳都支援，客戶收到發票後可以直接線上付款。如果我同時服務不同國家
+      的客戶呢？系統支援多幣別與各地稅率，發票會依客戶所在地自動套用正確的稅額與語言。資料存
+      在哪裡？你可以在建立工作區時選擇存放區域，之後不會被搬移。</p>
+
+    <h2>費用</h2>
+    <p>每月新台幣 490 元，含所有功能與不限筆數的發票，年繳可省兩個月。</p>
+  </main>
+
+  <footer><p>Ledgerly 有限公司</p></footer>
+</div>
+</body>
+</html>

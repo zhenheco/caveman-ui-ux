@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Phần mềm theo dõi hóa đơn cho kế toán viên độc lập.">
+<title>Ledgerly — Theo dõi hóa đơn</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.7 system-ui, sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 26px; margin: 24px 0 12px; }
+  h2 { font-size: 19px; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; }
+  /* Defect: a fixed 320px button with white-space: nowrap. The Vietnamese label is longer
+     than the box, so at the 375px viewport the CTA text overflows horizontally. */
+  .cta {
+    display: inline-block;
+    width: 320px;
+    white-space: nowrap;
+    overflow: visible;
+    min-height: 48px;
+    padding: 14px 18px;
+    background: #0b57d0;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    border: 0;
+    border-radius: 6px;
+    text-align: center;
+    text-decoration: none;
+  }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Điều hướng chính">
+      <ul><li><a href="./vi-cta-overflow.html">Bảng giá</a></li></ul>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Gửi hóa đơn trong vòng một phút</h1>
+    <p>Ledgerly là phần mềm theo dõi hóa đơn dành cho kế toán viên hành nghề độc lập, mỗi tháng
+      xuất từ năm đến năm mươi hóa đơn cho khách hàng của mình.</p>
+    <p><a class="cta" href="./vi-cta-overflow.html">Bắt đầu dùng thử miễn phí ngay hôm nay</a></p>
+
+    <h2>Bạn nhận được gì</h2>
+    <p>Tự động đối chiếu tiền vào, nhắc thanh toán theo lịch, và báo cáo thuế giá trị gia tăng
+      chỉ với một lần bấm. Mọi số liệu đều lấy từ cùng một sổ cái nên luôn khớp nhau.</p>
+
+    <h2>Chi phí</h2>
+    <p>Ba trăm chín mươi nghìn đồng mỗi tháng, không giới hạn số hóa đơn phát hành.</p>
+  </main>
+
+  <footer><p>Công ty Ledgerly. Giá đã bao gồm thuế.</p></footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Invoice tracking for solo accountants. Send an invoice in under a minute.">
+<title>Ledgerly — Invoice tracking for solo accountants</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 28px; margin: 24px 0 8px; }
+  h2 { font-size: 20px; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; max-width: 60ch; }
+  .cta { display: inline-block; min-height: 48px; padding: 14px 20px; background: #0b57d0;
+         color: #fff; font-weight: 700; border: 0; border-radius: 6px; text-decoration: none; }
+  .ghost { display: inline-block; min-height: 48px; padding: 14px 20px; color: #0b57d0; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #6b7280; border-radius: 4px; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+  svg { display: block; max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main">
+      <ul>
+        <li><a href="./clear-landing.html">Overview</a></li>
+        <li><a href="./clear-landing.html">Pricing</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Send an invoice in under a minute</h1>
+    <p>Ledgerly is invoice tracking software for solo accountants who bill 5 to 50 clients
+      a month. You enter the hours, Ledgerly sends the invoice and chases the payment.</p>
+    <p><a class="cta" href="./clear-landing.html">Start a free 14-day trial</a>
+       <a class="ghost" href="./clear-landing.html">See a sample invoice</a></p>
+
+    <h2>What you get</h2>
+    <p>Automatic payment reminders, one-click VAT reports, and a dashboard that shows exactly
+      which client still owes you money today.</p>
+    <svg width="240" height="80" viewBox="0 0 240 80" role="img" aria-label="Three invoices paid on time">
+      <rect x="0" y="40" width="60" height="40" fill="#0b57d0"></rect>
+      <rect x="80" y="24" width="60" height="56" fill="#0b57d0"></rect>
+      <rect x="160" y="8" width="60" height="72" fill="#0b57d0"></rect>
+    </svg>
+
+    <h2>Trusted by 1,200 accountants</h2>
+    <p>&ldquo;I stopped writing reminder emails on Sunday nights.&rdquo; — Mia Torres, chartered accountant, Leeds.</p>
+
+    <h2>Get the weekly cash-flow digest</h2>
+    <form action="./index.html" method="get">
+      <label for="email">Work email</label>
+      <input id="email" name="email" type="email" placeholder="you@firm.com" required>
+      <label for="clients">Clients you bill each month</label>
+      <input id="clients" name="clients" type="number" min="1" max="500" value="12">
+      <p><button class="cta" type="submit">Send me the digest</button></p>
+    </form>
+  </main>
+
+  <footer>
+    <p>Ledgerly Ltd. Registered in England, company 09182736. VAT GB 123 4567 89.</p>
+  </footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # The skill has zero npm dependencies; Playwright is a host tool, installed globally.
+      - name: Install Playwright and Chromium
+        run: |
+          npm i -g playwright
+          npx --yes playwright install --with-deps chromium
+
+      - name: Doctor
+        run: node scripts/caveman.mjs doctor --json
+        env:
+          CAVEMAN_RUNTIME_HOST: codex
+
+      - name: Rule pack
+        run: node scripts/caveman.mjs rules check
+
+      # Lighthouse is not exercised here: it needs network access to npx and its numbers
+      # fluctuate, so the suite treats availability as an outcome rather than a requirement.
+      - name: Tests
+        run: node --test --test-timeout=1800000 scripts/tests/*.test.mjs
+        env:
+          CAVEMAN_RUNTIME_HOST: codex
+
+      - name: Upload run artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caveman-run-${{ matrix.node }}
+          path: |
+            /tmp/caveman-*/**/.caveman-ui-ux/runs/**
+          if-no-files-found: ignore
+          retention-days: 7

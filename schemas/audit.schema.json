@@ -1,0 +1,1359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhenheco/caveman-ui-ux/schemas/audit.schema.json",
+  "title": "caveman-ui-ux audit document",
+  "description": "audit.json 的正式格式，由 `score` 產出（Stage F+G+H），是 report.md / report.html 與 CI gate 的唯一資料來源。component score 皆可為 null（該 stage 未執行或工具不可用）；composite 只是溝通用摘要，不驅動 gate。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool",
+    "run",
+    "config",
+    "targets",
+    "scores",
+    "findings",
+    "gates"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "audit document 格式版本。"
+    },
+    "tool": {
+      "type": "object",
+      "description": "產出這份 audit 的工具。",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "固定 caveman-ui-ux。"
+        },
+        "version": {
+          "type": "string",
+          "description": "skill 版本。"
+        }
+      }
+    },
+    "run": {
+      "$ref": "#/$defs/run"
+    },
+    "config": {
+      "type": "object",
+      "description": "本次執行採用的完整 config（正規化後、gates 為 flat 拼法）。"
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/expanded_target"
+      },
+      "description": "expandTargets 展開的 route × locale × viewport 清單。"
+    },
+    "scores": {
+      "type": "object",
+      "description": "component scores。null 代表該 component 未計算，report 顯示 score.unavailable。",
+      "required": [
+        "caveman",
+        "heuristic_ux",
+        "accessibility",
+        "technical",
+        "multilingual_consistency",
+        "evaluator_confidence",
+        "evaluator_dispersion"
+      ],
+      "properties": {
+        "caveman": {
+          "$ref": "#/$defs/score",
+          "description": "九維加權 caveman 分數。"
+        },
+        "heuristic_ux": {
+          "$ref": "#/$defs/score",
+          "description": "agent heuristic 扣分後分數。"
+        },
+        "accessibility": {
+          "$ref": "#/$defs/score",
+          "description": "axe-core findings 推得的分數。"
+        },
+        "technical": {
+          "$ref": "#/$defs/score",
+          "description": "Lighthouse 中位數推得的分數；Lighthouse 不可用時為 null。"
+        },
+        "multilingual_consistency": {
+          "$ref": "#/$defs/score",
+          "description": "多語一致性分數；locale 少於 2 個時為 null。"
+        },
+        "evaluator_confidence": {
+          "$ref": "#/$defs/unit_score",
+          "description": "evaluator confidence 中位數乘上一致性折減（0..1）。"
+        },
+        "evaluator_dispersion": {
+          "$ref": "#/$defs/unit_score",
+          "description": "evaluator 之間的分歧程度（0..1）；分歧不扣分，只作為模糊訊號。"
+        },
+        "composite": {
+          "$ref": "#/$defs/composite"
+        }
+      }
+    },
+    "per_screen": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/per_screen"
+      },
+      "description": "每個 screen 的結果摘要。"
+    },
+    "caveman": {
+      "description": "Stage C blind 結果。跑 --no-llm 時為 null 或省略。",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "evaluators",
+            "consensus"
+          ],
+          "properties": {
+            "evaluators": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "單一 evaluator 對單一 screen 的 provenance：誰答的、哪個 runtime/模型、多有信心。原始回應封存在 screens/<screen-id>/blind/<evaluator-id>.json，不重複塞進 audit.json。",
+                "required": [
+                  "id",
+                  "screen_id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "本 run 內的 evaluator id。"
+                  },
+                  "runtime": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "claude",
+                      "codex",
+                      "other",
+                      null
+                    ],
+                    "description": "作答的 runtime host。"
+                  },
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "實際作答的模型名稱。"
+                  },
+                  "screen_id": {
+                    "type": "string",
+                    "pattern": "^scr_[0-9a-f]{12}$",
+                    "description": "作答的 screen。"
+                  },
+                  "confidence": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "該回應的整體信心。"
+                  },
+                  "ingested_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "封存時間（ISO 8601）。"
+                  }
+                }
+              },
+              "description": "封存 blind 回應的 provenance 清單（每個 screen x evaluator 一筆）。"
+            },
+            "consensus": {
+              "type": "object",
+              "description": "ADR-002 聚合結果。",
+              "required": [
+                "dimensions",
+                "score"
+              ],
+              "properties": {
+                "dimensions": {
+                  "type": "object",
+                  "description": "每個 dimension 的中位數分數與離散度。",
+                  "required": [
+                    "identity",
+                    "audience",
+                    "value",
+                    "primary_action",
+                    "visual_hierarchy",
+                    "cognitive_simplicity",
+                    "trust",
+                    "navigation",
+                    "language_clarity"
+                  ],
+                  "properties": {
+                    "identity": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "audience": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "value": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "primary_action": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "visual_hierarchy": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "cognitive_simplicity": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "trust": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "navigation": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    },
+                    "language_clarity": {
+                      "$ref": "#/$defs/consensus_dimension"
+                    }
+                  }
+                },
+                "score": {
+                  "$ref": "#/$defs/score",
+                  "description": "consensus dimension 推得的 caveman 分數。"
+                }
+              }
+            },
+            "answers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "description": "單一 evaluator 對單一 screen 的五問回答。",
+                "properties": {
+                  "screen_id": {
+                    "type": "string",
+                    "pattern": "^scr_[0-9a-f]{12}$",
+                    "description": "所屬 screen。"
+                  },
+                  "evaluator_id": {
+                    "type": "string",
+                    "description": "作答者 id。"
+                  },
+                  "answers": {
+                    "type": "object",
+                    "description": "blind response 的 answers 區塊。"
+                  }
+                }
+              },
+              "description": "報告 blind.answers 區塊的資料來源。"
+            },
+            "contradictions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/contradiction"
+              },
+              "description": "任一 dimension max-min >= 4 時記錄的分歧，代表畫面本身模糊，不是扣分項。"
+            }
+          }
+        }
+      ]
+    },
+    "locale_matrix": {
+      "description": "Stage F 多語矩陣。locale 少於 2 個時為 null 或 score 為 null。",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "locales",
+            "rows",
+            "score"
+          ],
+          "properties": {
+            "locales": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "比對的 locale 清單，第一個是 reference locale。"
+            },
+            "rows": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/locale_matrix_row"
+              },
+              "description": "每個 normalized_route 一列。"
+            },
+            "score": {
+              "$ref": "#/$defs/score",
+              "description": "多語一致性分數。"
+            }
+          }
+        }
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      },
+      "description": "所有 stage 的 findings。severity 為 blocker|critical|major 者必須至少一筆 evidence，否則會被丟棄並記入 limitations。"
+    },
+    "gates": {
+      "type": "object",
+      "description": "gate 評估結果與 process exit code。",
+      "required": [
+        "pass",
+        "results",
+        "exit_code"
+      ],
+      "properties": {
+        "pass": {
+          "type": "boolean",
+          "description": "是否所有非 skipped gate 皆通過。"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gate_result"
+          },
+          "description": "逐項 gate 結果。"
+        },
+        "exit_code": {
+          "type": "integer",
+          "enum": [
+            0,
+            1
+          ],
+          "description": "0 = OK，1 = GATE_FAIL。"
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "本次執行做不到的事（例如 Lighthouse 不可用、丟棄無證據 findings）。"
+    },
+    "notices": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "使用者需要知道的宣告（例如非法律合規保證、非使用者研究替代品）。"
+    }
+  },
+  "$defs": {
+    "score": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 100,
+      "description": "0..100 的 component 分數，null 代表未計算。"
+    },
+    "unit_score": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "0..1 的比例值，null 代表未計算。"
+    },
+    "composite": {
+      "description": "綜合分數。只有 config.composite.enabled 時才有值；永遠不取代 component score，也不驅動 gate。",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "object",
+          "required": [
+            "value",
+            "weights",
+            "disclosed"
+          ],
+          "properties": {
+            "value": {
+              "$ref": "#/$defs/score",
+              "description": "重新正規化後的加權分數。"
+            },
+            "weights": {
+              "type": "object",
+              "description": "實際使用的權重（已對非 null component 正規化）。"
+            },
+            "disclosed": {
+              "type": "boolean",
+              "description": "固定 true，公式必須公開。"
+            },
+            "components": {
+              "type": "object",
+              "description": "參與計算的 component 分數。"
+            }
+          }
+        }
+      ]
+    },
+    "run": {
+      "type": "object",
+      "description": "run manifest（run.json 同一份結構）。",
+      "required": [
+        "run_id",
+        "started_at",
+        "cwd",
+        "config_hash",
+        "report_locale",
+        "tool_versions",
+        "stages_completed"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_[0-9]{8}T[0-9]{6}Z_[0-9a-f]{6}$",
+          "description": "run 識別碼。"
+        },
+        "started_at": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ISO 8601 開始時間。"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ISO 8601 結束時間；尚未結束為 null。"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "被稽核專案的工作目錄。"
+        },
+        "config": {
+          "type": "object",
+          "description": "本次採用的 config 快照。"
+        },
+        "config_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "canonical config JSON 的 sha256 前 16 hex。"
+        },
+        "report_locale": {
+          "type": "string",
+          "description": "報告輸出語言。"
+        },
+        "tool_versions": {
+          "$ref": "#/$defs/tool_versions"
+        },
+        "screens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/screen_record"
+          },
+          "description": "所有截圖過的 screen。"
+        },
+        "stages_completed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "已完成的 stage 代號，供 resume 判斷。"
+        },
+        "blind_sealed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "sealed.json 寫入時間；未封存為 null。"
+        }
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "description": "本次執行實際使用的工具版本，供可重現性判斷。",
+      "required": [
+        "node",
+        "playwright",
+        "browser",
+        "axe_core"
+      ],
+      "properties": {
+        "node": {
+          "type": "string",
+          "description": "node 版本。"
+        },
+        "playwright": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "playwright 版本（由 global root 解析）。"
+        },
+        "browser": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "實際啟動的瀏覽器，例如 chrome 151.0.7922.138 (channel:chrome)。"
+        },
+        "axe_core": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "axe-core 版本（pinned）。"
+        },
+        "lighthouse": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Lighthouse 版本；不可用為 null。"
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "description": "viewport 定義。",
+      "required": [
+        "id",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "viewport 識別碼。"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "CSS 寬度（px）。"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "CSS 高度（px）。"
+        },
+        "device_scale_factor": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "device pixel ratio。"
+        }
+      }
+    },
+    "expanded_target": {
+      "type": "object",
+      "description": "expandTargets 的單一組合。",
+      "required": [
+        "route",
+        "locale"
+      ],
+      "properties": {
+        "route": {
+          "type": "string",
+          "description": "原始 route。"
+        },
+        "normalized_route": {
+          "type": "string",
+          "description": "正規化後的 route（去 query/hash/locale 前綴）。"
+        },
+        "locale": {
+          "type": "string",
+          "description": "target locale，或 auto。"
+        },
+        "viewport": {
+          "description": "viewport 物件或其 id。",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/viewport"
+            }
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "解析後的完整 URL。"
+        }
+      }
+    },
+    "screen_record": {
+      "type": "object",
+      "description": "單一 screen 的抓取結果（Stage A/B）。",
+      "required": [
+        "screen_id",
+        "route",
+        "normalized_route",
+        "url",
+        "locale",
+        "viewport",
+        "status"
+      ],
+      "properties": {
+        "screen_id": {
+          "type": "string",
+          "pattern": "^scr_[0-9a-f]{12}$",
+          "description": "opaque screen id。"
+        },
+        "route": {
+          "type": "string",
+          "description": "原始 route。"
+        },
+        "normalized_route": {
+          "type": "string",
+          "description": "正規化後的 route。"
+        },
+        "url": {
+          "type": "string",
+          "description": "實際導航的 URL。"
+        },
+        "locale": {
+          "type": "string",
+          "description": "target locale。"
+        },
+        "viewport": {
+          "$ref": "#/$defs/viewport"
+        },
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "主文件 HTTP 狀態碼；導航失敗為 null。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ],
+          "description": "抓取結果。"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "錯誤訊息；成功為 null。"
+        },
+        "screenshot": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "截圖檔資訊。status 'ok' 時為物件且三個欄位都必填；抓取失敗（status 'error'）時為 null。",
+          "required": [
+            "path",
+            "bytes",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "run 目錄相對路徑。"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "檔案大小。"
+            },
+            "sha256": {
+              "type": "string",
+              "description": "檔案 sha256。"
+            }
+          }
+        },
+        "redacted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "截圖前被塗黑的 selector。"
+        }
+      }
+    },
+    "per_screen": {
+      "type": "object",
+      "description": "單一 screen 的評估摘要，聚合 blind、axe、checks 與 lighthouse 結果。",
+      "required": [
+        "screen_id"
+      ],
+      "properties": {
+        "screen_id": {
+          "type": "string",
+          "pattern": "^scr_[0-9a-f]{12}$",
+          "description": "screen id。"
+        },
+        "route": {
+          "type": "string",
+          "description": "原始 route。"
+        },
+        "normalized_route": {
+          "type": "string",
+          "description": "正規化後的 route。"
+        },
+        "locale": {
+          "type": "string",
+          "description": "target locale。"
+        },
+        "viewport": {
+          "description": "viewport 物件或其 id。",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/viewport"
+            }
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "實際導航的 URL。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "error"
+          ],
+          "description": "抓取結果。"
+        },
+        "screenshot": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "截圖檔資訊。"
+        },
+        "scores": {
+          "type": "object",
+          "description": "此 screen 的 component 分數。"
+        },
+        "finding_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "歸屬此 screen 的 finding id。"
+        },
+        "axe": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "axe 執行摘要（violations/passes/incomplete 計數）。"
+        },
+        "checks": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "deterministic checks 摘要。"
+        },
+        "lighthouse": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Lighthouse 中位數與各次結果；不可用為 null。"
+        },
+        "blind": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "此 screen 的 blind consensus 摘要。"
+        }
+      }
+    },
+    "consensus_dimension": {
+      "type": "object",
+      "description": "單一 dimension 的聚合結果。",
+      "required": [
+        "score"
+      ],
+      "properties": {
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 10,
+          "description": "各 evaluator 分數的中位數。"
+        },
+        "mad": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "median absolute deviation。"
+        },
+        "dispersion": {
+          "$ref": "#/$defs/unit_score",
+          "description": "min(1, MAD / 2.5)。"
+        },
+        "scores": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "各 evaluator 的原始分數。"
+        }
+      }
+    },
+    "contradiction": {
+      "type": "object",
+      "description": "evaluator 之間的顯著分歧（max-min >= 4）。",
+      "required": [
+        "dimension",
+        "spread",
+        "scores"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "description": "發生分歧的 dimension key。"
+        },
+        "spread": {
+          "type": "number",
+          "minimum": 0,
+          "description": "max - min。"
+        },
+        "scores": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "各 evaluator 分數。"
+        }
+      }
+    },
+    "locale_matrix_row": {
+      "type": "object",
+      "description": "多語矩陣的一列（一個 normalized_route）。",
+      "required": [
+        "normalized_route",
+        "by_locale"
+      ],
+      "properties": {
+        "normalized_route": {
+          "type": "string",
+          "description": "去掉 locale 前綴的 route。"
+        },
+        "route": {
+          "type": "string",
+          "description": "原始 route（供顯示）。"
+        },
+        "by_locale": {
+          "type": "object",
+          "description": "locale code 對應到 locale_matrix_cell。",
+          "additionalProperties": {
+            "$ref": "#/$defs/locale_matrix_cell"
+          }
+        }
+      }
+    },
+    "locale_matrix_cell": {
+      "type": "object",
+      "description": "多語矩陣單格。",
+      "properties": {
+        "screen_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "對應 screen；缺該語言為 null。"
+        },
+        "lang": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "頁面宣告的 html lang。"
+        },
+        "hreflang_ok": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "hreflang 是否完整（含 self 與 x-default）。"
+        },
+        "cta_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "偵測到的 CTA 數量。"
+        },
+        "primary_cta_text": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "主要 CTA 的原文。"
+        },
+        "residual_ratio": {
+          "$ref": "#/$defs/unit_score",
+          "description": "非目標語系殘留文字比例。"
+        },
+        "overflow": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "此語言是否出現水平溢出。"
+        },
+        "chars": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "可見文字字元數，用於 text expansion 比較。"
+        },
+        "longest_word": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "最長不可斷詞長度。"
+        }
+      }
+    },
+    "gate_result": {
+      "type": "object",
+      "description": "單一 gate 的評估結果。",
+      "required": [
+        "gate",
+        "actual",
+        "threshold",
+        "comparator",
+        "status"
+      ],
+      "properties": {
+        "gate": {
+          "type": "string",
+          "description": "gate 名稱（flat 拼法，例如 caveman_minimum）。"
+        },
+        "actual": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "實際值；無法計算為 null。"
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "門檻值；未設定為 null。"
+        },
+        "comparator": {
+          "type": "string",
+          "enum": [
+            ">=",
+            "<="
+          ],
+          "description": "比較方向。"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "skipped"
+          ],
+          "description": "gate 狀態；threshold 或 actual 為 null 時 skipped。"
+        },
+        "note": {
+          "type": "string",
+          "description": "補充說明，例如 Lighthouse 不可用。"
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "description": "canonical finding。id 由 rule + 座標決定，重跑要穩定。",
+      "required": [
+        "id",
+        "rule_id",
+        "kind",
+        "severity",
+        "confidence",
+        "title",
+        "target",
+        "evidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$",
+          "description": "deterministic / heuristic finding id（16 hex）。"
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "rules/core.pack.yaml 內的 rule id。"
+        },
+        "rule_version": {
+          "type": "string",
+          "description": "產生此 finding 的 rule 版本。"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "deterministic",
+            "heuristic",
+            "blind",
+            "multilingual"
+          ],
+          "description": "證據來源類型。只有 deterministic 能單獨讓 critical gate 失敗。"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "blocker",
+            "critical",
+            "major",
+            "minor",
+            "info"
+          ],
+          "description": "嚴重度。"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "信心值。deterministic 為 1.0；低於 0.60 的主觀 finding 不單獨計入 critical gate。"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "現象陳述，不寫成命令句。"
+        },
+        "detail": {
+          "type": "string",
+          "description": "為什麼這對這個畫面重要（report_locale）。"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          },
+          "description": "支持證據。blocker/critical/major 必須至少一筆。"
+        },
+        "fix_brief": {
+          "$ref": "#/$defs/fix_brief"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "resolved",
+            "improved",
+            "unchanged",
+            "regressed",
+            "not_comparable",
+            "not-comparable"
+          ],
+          "description": "verify 後的狀態；新產生的 finding 為 open。not_comparable 與 not-comparable 皆接受（contract §14 與 §18 拼法不一致）。"
+        }
+      }
+    },
+    "fix_brief": {
+      "type": "object",
+      "description": "交給實作 agent 的修復簡報。",
+      "properties": {
+        "intent": {
+          "type": "string",
+          "description": "要達成什麼結果，而不是怎麼改。"
+        },
+        "acceptance": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "可驗收條件。"
+        },
+        "suggested_change": {
+          "type": "string",
+          "description": "建議做法（非強制）。"
+        },
+        "rule_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "相關 rule id。"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "description": "finding 的座標。verify 必須用同一組座標重測。",
+      "required": [
+        "route",
+        "locale"
+      ],
+      "properties": {
+        "route": {
+          "type": "string",
+          "description": "原始 route。"
+        },
+        "normalized_route": {
+          "type": "string",
+          "description": "正規化後的 route（進 finding id）。"
+        },
+        "locale": {
+          "type": "string",
+          "description": "target locale。"
+        },
+        "viewport": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "viewport id。跨 viewport 的 finding 為 null。"
+        },
+        "screen_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "screen id；跨 screen 的 finding 為 null。"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "完整 URL。"
+        }
+      }
+    },
+    "evidence": {
+      "description": "canonical evidence union，以 type 欄位辨別（6 種）。",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "截圖上的一塊區域。",
+          "required": [
+            "type",
+            "box"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "screenshot_region"
+            },
+            "screen_id": {
+              "type": "string",
+              "pattern": "^scr_[0-9a-f]{12}$",
+              "description": "區域所屬的 screen id。"
+            },
+            "path": {
+              "type": "string",
+              "description": "截圖檔路徑（run 目錄相對路徑）。"
+            },
+            "box": {
+              "$ref": "#/$defs/box"
+            },
+            "note": {
+              "type": "string",
+              "description": "這塊區域說明了什麼。"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "DOM 節點。",
+          "required": [
+            "type",
+            "selector"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "dom"
+            },
+            "selector": {
+              "type": "string",
+              "description": "穩定 selector（優先 #id，否則 nth-of-type 路徑）。"
+            },
+            "node_path": {
+              "type": "string",
+              "description": "節點在 DOM 樹中的路徑。"
+            },
+            "html": {
+              "type": "string",
+              "description": "節點 outerHTML 片段（截斷）。"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "量測數值。",
+          "required": [
+            "type",
+            "name",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "metric"
+            },
+            "name": {
+              "type": "string",
+              "description": "指標名稱。"
+            },
+            "value": {
+              "type": [
+                "number",
+                "string",
+                "boolean",
+                "null"
+              ],
+              "description": "指標值。"
+            },
+            "unit": {
+              "type": "string",
+              "description": "單位，例如 px、ratio、ms。"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "頁面上的文字。",
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "text"
+            },
+            "value": {
+              "type": "string",
+              "description": "引用的原文，不要翻譯。"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "console 或 network log。",
+          "required": [
+            "type",
+            "source",
+            "message"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "log"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "console",
+                "network"
+              ],
+              "description": "log 來源。"
+            },
+            "message": {
+              "type": "string",
+              "description": "log 內容（已做 secret redaction）。"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "人工或 agent 的觀察註記。",
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "manual_note"
+            },
+            "value": {
+              "type": "string",
+              "description": "註記內容。"
+            }
+          }
+        }
+      ]
+    },
+    "box": {
+      "type": "object",
+      "description": "截圖座標框（px，相對於 viewport 截圖）。",
+      "required": [
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "description": "左上角 x。"
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "description": "左上角 y。"
+        },
+        "w": {
+          "type": "number",
+          "minimum": 0,
+          "description": "寬度。"
+        },
+        "h": {
+          "type": "number",
+          "minimum": 0,
+          "description": "高度。"
+        }
+      }
+    }
+  }
+}

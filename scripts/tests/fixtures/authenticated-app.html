@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Sign in to the Ledgerly workspace.">
+<title>Sign in — Ledgerly</title>
+<!--
+  Fixture purpose: simulate a gated app screen so the pipeline can be exercised against a
+  login wall without any real credentials.
+
+  A REAL authenticated target is never reached by typing credentials into the page. Configure
+  target.storage_state in caveman.config.yaml and point it at a Playwright storage-state file
+  produced outside this tool:
+
+      target:
+        storage_state: ./.auth/storage-state.json
+
+  SPEC-001 §11: the storage state (cookies, localStorage, bearer tokens) is a secret. It MUST
+  NEVER be copied into .caveman-ui-ux/runs/**, into run.json, into blind-payload.json, into any
+  report, or into a screenshot. Redact any element that renders a session value using
+  privacy.redact_selectors before capture.
+-->
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: #14171a; background: #eef1f5; }
+  .shell { filter: blur(4px); opacity: 0.6; padding: 16px; }
+  .shell h2 { font-size: 18px; margin: 0 0 8px; }
+  .row { background: #fff; border: 1px solid #d0d5dd; border-radius: 6px; padding: 12px; margin: 0 0 8px; }
+  .panel { max-width: 380px; margin: 24px auto; background: #fff; border: 1px solid #b8c0cc;
+    border-radius: 8px; padding: 20px; }
+  h1 { font-size: 24px; margin: 0 0 12px; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input { width: 100%; min-height: 44px; padding: 10px; border: 1px solid #6b7280;
+    border-radius: 4px; font-size: 16px; }
+  button { width: 100%; min-height: 48px; margin-top: 16px; background: #0b57d0; color: #fff;
+    font-weight: 700; border: 0; border-radius: 6px; }
+  footer { text-align: center; padding: 16px; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="shell" aria-hidden="true">
+  <h2>Workspace</h2>
+  <div class="row">Invoice 2026-0148 &middot; overdue</div>
+  <div class="row">Invoice 2026-0149 &middot; sent</div>
+  <div class="row">Invoice 2026-0150 &middot; draft</div>
+</div>
+
+<main>
+  <div class="panel">
+    <h1>Sign in to continue</h1>
+    <p>This workspace is private. Audits of gated screens use a pre-captured storage state.</p>
+    <form action="./index.html" method="get">
+      <label for="workspace-email">Work email</label>
+      <input id="workspace-email" name="email" type="email" autocomplete="username" required>
+      <label for="workspace-password">Password</label>
+      <input id="workspace-password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</main>
+
+<footer><p><a href="./authenticated-app.html">Back to sign-in</a></p></footer>
+</body>
+</html>

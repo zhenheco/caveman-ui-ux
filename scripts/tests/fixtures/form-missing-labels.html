@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Account signup form.">
+<title>Create your account</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: #14171a; background: #fff; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 16px; }
+  nav ul { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+  nav a { display: inline-block; padding: 10px 12px; min-height: 44px; color: #14171a; }
+  h1 { font-size: 26px; margin: 24px 0 12px; }
+  input, select { width: 100%; min-height: 44px; padding: 10px; margin: 0 0 12px;
+    border: 1px solid #6b7280; border-radius: 4px; font-size: 16px; }
+  button { min-height: 48px; padding: 14px 20px; background: #0b57d0; color: #fff;
+    font-weight: 700; border: 0; border-radius: 6px; }
+  footer { border-top: 1px solid #d0d5dd; margin-top: 32px; padding: 16px 0; color: #444b53; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <nav aria-label="Main"><ul><li><a href="./form-missing-labels.html">Checkout</a></li></ul></nav>
+  </header>
+
+  <main>
+    <h1>Create your account</h1>
+    <!-- Defect: every control is placeholder-only. No <label>, no aria-label,
+         no aria-labelledby, no title. Expect TECH.FORM.MISSING_LABEL on 5 controls. -->
+    <form action="./index.html" method="get">
+      <input name="full_name" type="text" placeholder="Full name">
+      <input name="email" type="email" placeholder="Email">
+      <input name="password" type="password" placeholder="Password">
+      <input name="company" type="text" placeholder="Company">
+      <select name="country">
+        <option value="">Country</option>
+        <option value="tw">Taiwan</option>
+        <option value="jp">Japan</option>
+        <option value="vn">Vietnam</option>
+      </select>
+      <button type="submit">Create account</button>
+    </form>
+  </main>
+
+  <footer><p>We never share your details.</p></footer>
+</div>
+</body>
+</html>
