@@ -12,7 +12,7 @@ import {
 } from './lib/blind.mjs';
 import { resolveLaunch, resolvePlaywright, withPage } from './lib/browser.mjs';
 import {
-  captureMatrix, readRunManifest, redactionSummary, updateRunManifest,
+  captureMatrix, readRunManifest, redactionSummary, updateRunManifest, withTargetApp,
 } from './lib/capture.mjs';
 import { checkLinks, collectDom, runChecks } from './lib/checks.mjs';
 import {
@@ -1112,7 +1112,9 @@ const COMMANDS = {
       pruneExpired(ctx, config);
       const runId = newRunId();
       ctx.log(`run ${runId} (config: ${loaded.source}, hash ${configHash(config)})`);
-      const manifest = await captureMatrix({ cwd: ctx.cwd, config, runId, log: (message) => ctx.log(message) });
+      const manifest = await withTargetApp(config, ctx.cwd, (message) => ctx.log(message), () =>
+        captureMatrix({ cwd: ctx.cwd, config, runId, log: (message) => ctx.log(message) }),
+        () => resolveLaunch(config));
       const ok = manifest.screens.filter((screen) => screen.status === 'ok');
       ctx.emit(
         {
@@ -1266,10 +1268,14 @@ const COMMANDS = {
     describe: 'Stage D: axe-core, deterministic checks, link probes and Lighthouse',
     async run(ctx) {
       const runId = resolveRunId(ctx);
-      const result = await runEvidenceStage(ctx, runId, {
-        noLighthouse: Boolean(ctx.flags['no-lighthouse']),
-        offline: Boolean(ctx.flags.offline),
-      });
+      const manifest = await readRunManifest(ctx.cwd, runId);
+      const config = await withLiveCredentials(ctx, manifest.config, 'evidence');
+      const result = await withTargetApp(config, ctx.cwd, (message) => ctx.log(message), () =>
+        runEvidenceStage(ctx, runId, {
+          noLighthouse: Boolean(ctx.flags['no-lighthouse']),
+          offline: Boolean(ctx.flags.offline),
+        }),
+        () => resolveLaunch(config));
       ctx.emit(
         { command: 'evidence', ...result },
         [
@@ -1434,11 +1440,15 @@ const COMMANDS = {
       const runId = newRunId();
       ctx.log(`run ${runId} (config: ${loaded.source}, hash ${configHash(config)})`);
 
-      const manifest = await captureMatrix({ cwd: ctx.cwd, config, runId, log: (message) => ctx.log(message) });
-      await runEvidenceStage(ctx, runId, {
-        noLighthouse: Boolean(ctx.flags['no-lighthouse']),
-        offline: Boolean(ctx.flags.offline),
-      });
+      const manifest = await withTargetApp(config, ctx.cwd, (message) => ctx.log(message), async () => {
+        const m = await captureMatrix({ cwd: ctx.cwd, config, runId, log: (message) => ctx.log(message) });
+        await runEvidenceStage(ctx, runId, {
+          noLighthouse: Boolean(ctx.flags['no-lighthouse']),
+          offline: Boolean(ctx.flags.offline),
+        });
+        return m;
+      },
+      () => resolveLaunch(config));
       if (!noLlm) {
         ctx.log('blind and heuristic stages are agent-driven: run `caveman prepare` / `caveman ingest` / `heuristic ingest` before score for a full audit');
       }
@@ -1506,15 +1516,20 @@ const COMMANDS = {
         `verify: re-capturing ${onlyTargets ? `the coordinates of ${only.size} finding(s)` : `${totalTargets} sealed coordinates`}`
         + ` from ${previousRunId} as ${runId}`,
       );
-      const manifest = await captureMatrix({
-        cwd: ctx.cwd, config, runId, log: (message) => ctx.log(message), onlyTargets: onlyTargets ?? undefined,
-      });
+      const manifest = await withTargetApp(config, ctx.cwd, (message) => ctx.log(message), async () => {
+        const m = await captureMatrix({
+          cwd: ctx.cwd, config, runId, log: (message) => ctx.log(message), onlyTargets: onlyTargets ?? undefined,
+        });
+        const recaptured = m.screens.length;
+        ctx.log(`verify: re-captured ${recaptured} of ${totalTargets} sealed coordinates`);
+        await runEvidenceStage(ctx, runId, {
+          noLighthouse: Boolean(ctx.flags['no-lighthouse']),
+          offline: Boolean(ctx.flags.offline),
+        });
+        return m;
+      },
+      () => resolveLaunch(config));
       const recaptured = manifest.screens.length;
-      ctx.log(`verify: re-captured ${recaptured} of ${totalTargets} sealed coordinates`);
-      await runEvidenceStage(ctx, runId, {
-        noLighthouse: Boolean(ctx.flags['no-lighthouse']),
-        offline: Boolean(ctx.flags.offline),
-      });
       const { audit } = await buildAudit(ctx, runId, { noLlm: true, allowMissingTechnical: true });
 
       const diff = diffFindings({

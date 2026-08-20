@@ -1,6 +1,7 @@
 // Stage A (preflight) + Stage B (blind capture): render every target, seal the
 // screenshot manifest, emit blind payloads. Contract §9.
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { createHash } from 'node:crypto';
 import { chmod, readFile, rm } from 'node:fs/promises';
 import { get as httpGet } from 'node:http';
@@ -121,7 +122,15 @@ async function applyRedactions(page, selectors) {
 }
 
 /** Split a command string into an argv array, honouring single and double quotes. */
-function splitArgv(command) {
+export function splitArgv(command) {
+  if (Array.isArray(command)) {
+    for (let i = 0; i < command.length; i++) {
+      if (typeof command[i] !== 'string' || command[i] === '') {
+        return fail(`target.start_command array element at index ${i} is not a non-empty string`, EXIT.CONFIG, { index: i, value: command[i] });
+      }
+    }
+    return command;
+  }
   const argv = [];
   let current = '';
   let started = false;
@@ -197,6 +206,35 @@ function probeUrl(url, timeoutMs = 2000) {
   });
 }
 
+/** True as soon as a TCP connect to the host:port of url succeeds; false on error or timeout. */
+export function isPortInUse(url, timeoutMs = 500) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      finish(false);
+      return;
+    }
+    const port = Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+    const socket = connect({ host: parsed.hostname, port, timeout: timeoutMs }, () => {
+      socket.destroy();
+      finish(true);
+    });
+    socket.on('error', () => finish(false));
+    socket.on('timeout', () => {
+      socket.destroy();
+      finish(false);
+    });
+  });
+}
+
 /** SIGTERM a child process, escalating to SIGKILL after 5s; resolves once it is gone. */
 function killChild(child) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
@@ -257,6 +295,36 @@ export async function startTargetApp(config, cwd, log) {
     EXIT.TARGET,
     { start_command: command, base_url: url, timeout_ms: timeoutMs, child: diedAlone },
   );
+}
+
+/** Start the target app, call fn, and stop the app in finally. */
+export async function withTargetApp(config, cwd, log, fn, preflight) {
+  const say = toLogger(log);
+  const command = config?.target?.start_command;
+  const url = config?.target?.base_url;
+
+  // No start_command configured: run fn directly.
+  if (command === null || command === undefined || command === '') return fn();
+
+  // Validate start_command legality before any side effect (C1).
+  splitArgv(command);
+
+  // Run preflight before spawning (C2).
+  if (preflight) await preflight();
+
+  // Already answering: don't spawn, don't kill — it may be a user's own server.
+  if (url && await isPortInUse(url)) {
+    say(`reusing the server already listening on ${url} (not started by us, will not be stopped)`);
+    return fn();
+  }
+
+  // Spawn our own child, run fn, stop child in finally.
+  const app = await startTargetApp(config, cwd, log);
+  try {
+    return await fn();
+  } finally {
+    if (app) await app.stop();
+  }
 }
 
 /** Screens whose configured redact_selectors matched nothing, for the score limitations block. */
@@ -340,13 +408,7 @@ export async function captureMatrix({ cwd, config, runId, log, onlyTargets } = {
   const launch = await resolveLaunch(config);
   say(`browser: ${launch.browserDescription}`);
 
-  const app = await startTargetApp(config, workDir, say);
-  try {
-    return await captureTargets({ workDir, config, runId, say, targets, launch, startedAt, localePrefixes, configuredRoutes });
-  } finally {
-    // Always reclaim the child, including when capture threw.
-    if (app) await app.stop();
-  }
+  return await captureTargets({ workDir, config, runId, say, targets, launch, startedAt, localePrefixes, configuredRoutes });
 }
 
 /** Capture every planned target, seal the manifest and return it (contract §9). */

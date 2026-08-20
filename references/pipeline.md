@@ -54,19 +54,28 @@ ScreenRecord = { screen_id, route, normalized_route, url, locale,
 | | |
 |---|---|
 | Input | config 檔（`caveman.config.yaml\|yml\|json` 或 `--config`）、CLI overrides、`[url]` |
-| Action | resolve config → 驗 `schemas/config.schema.json` → 正規化 gate 兩種寫法 → `expandTargets` 展開 route×locale×viewport → 產 run id → 解析 playwright/browser/axe/lighthouse 版本 → retention sweep → 需要時起 `target.start_command` |
+| Action | resolve config → 驗 `schemas/config.schema.json` → 正規化 gate 兩種寫法 → `expandTargets` 展開 route×locale×viewport → 產 run id → 解析 playwright/browser/axe/lighthouse 版本 → retention sweep → browser preflight（`resolveLaunch`）→ 需要時起 `target.start_command` |
 | Artifact | `runs/<run-id>/run.json`（`stages_completed: ['A']`） |
 | Exit codes | `2 CONFIG`（找不到 `--config` 指定的檔、schema 錯、缺 base_url 又推不出 target、`start_command` 引號沒收尾或沒配 base_url）、`4 DEPENDENCY`（playwright 或 browser 解析失敗）、`3 TARGET`（`start_command` 起了但 base_url 在 timeout 內不回應） |
 
-### `target.start_command`（`capture` 會真的執行）
+### `target.start_command`（`capture` / `evidence` / `verify` / `audit` 四個 command 都會執行）
 
-設了就由 `capture` 把站台叫起來，`null` 代表站台已在跑：切成 **argv array** 後
-`spawn(..., { shell: false })`——**不進 shell**，config 值不可能變成 shell injection（支援單/雙引號
-分段，引號沒收尾 ⇒ `2 CONFIG`）。cwd 用 `--cwd`，child 的 stdout/stderr 逐行併進進度 log。
-Readiness = 對 `base_url` 每 250ms 送一次 GET，收到**任何** status 就算起來（自簽憑證也算），
-上限 `target.wait.timeout_ms`；逾時或 child 先死 ⇒ `3 TARGET`。收尾一定在 `finally` 殺 child
-（`SIGTERM` → 5 秒後 `SIGKILL`），capture 拋錯也照殺。只管一個 child：detached worker 或
-warm-up endpoint 另有需求的站台請自己先起好。
+由 `withTargetApp` 統一管理：
+- `capture` / `evidence` / `verify` / `audit` **四個 command 都會**在需要時啟動 app（`audit` 只包一次涵蓋全部階段）。
+- 所有權在 `withTargetApp`，不在 `captureMatrix`。
+- 先驗 `start_command` 合法性（argv array 不能有空白或非字串元素，`2 CONFIG`），
+  再跑 browser preflight（`resolveLaunch`），最後才決定要不要 spawn。
+- 如果 `base_url` 的 port 上**已經有人在聽**（TCP connect 探測，與 HTTP 回應時間無關）：
+  **不 spawn、不 kill**——那可能是使用者自己的 server，工具不會動它。
+  會 log 一行 `reusing the server already listening on <url> (not started by us, will not be stopped)`。
+- 如果 port 上沒人聽，才 spawn：切成 **argv array** 後
+  `spawn(..., { shell: false })`——**不進 shell**，config 值不可能變成 shell injection（支援單/雙引號
+  分段，引號沒收尾 ⇒ `2 CONFIG`）。cwd 用 `--cwd`，child 的 stdout/stderr 逐行併進進度 log。
+  Readiness = 對 `base_url` 每 250ms 送一次 GET，收到**任何** status 就算起來（自簽憑證也算），
+  上限 `target.wait.timeout_ms`；逾時或 child 先死 ⇒ `3 TARGET`。收尾一定在 `finally` 殺 child
+  （`SIGTERM` → 5 秒後 `SIGKILL`），fn 拋錯也照殺。只管一個 child：detached worker 或
+  warm-up endpoint 另有需求的站台請自己先起好。
+- `null`／未設／空字串代表不需要啟動：直接跑 fn，什麼都不 spawn。
 
 ## Stage B — Blind capture（`capture`）
 
