@@ -120,7 +120,7 @@ Panel loop：對 `ev-1..ev-N` 重複 step 3+4。N 份 payload 完全相同、dis
 node "$SKILL_DIR/scripts/caveman.mjs" evidence --run <run-id>   # 可加 --no-lighthouse / --offline
 ```
 
-**6. Stage E — Full-context heuristic（現在才可以看 DOM、copy、route 意圖、source）。** 讀 `screens/*/dom.json` 與 `checks.json`，用 `UX.*` rule ids 寫出 findings JSON 再 ingest。
+**6. Stage E — Full-context heuristic（現在才可以看 DOM、copy、route 意圖、source）。** 讀 `screens/*/dom.json` 與 `checks.json`，用 `UX.*` rule ids 寫出 `{ "evaluated_screen_ids": ["scr_..."], "findings": [...] }` 再 ingest；`evaluated_screen_ids` 必須唯一且只能列 manifest 內實際評估過的 screen，零 finding 的已評估 screen 也要列入。
 **rule id 是封閉字彙**：先 `rules list` 查，pack 裡沒有的 id 會被整批退回（`EXIT.EVALUATOR (5)`）。
 
 ```bash
@@ -145,7 +145,7 @@ node "$SKILL_DIR/scripts/caveman.mjs" rules check
 node "$SKILL_DIR/scripts/caveman.mjs" prune             # 刪過期 run + 其 staged 截圖
 ```
 
-指令全集：`init` `install` `doctor` `capture` `caveman prepare` `caveman ingest` `evidence` `heuristic ingest` `score` `report` `audit` `verify` `prune` `rules`。
+指令全集：`init` `install` `doctor` `capture` `caveman prepare` `caveman ingest` `evidence` `heuristic ingest` `score` `report` `audit` `verify` `handoff prepare` `handoff record` `prune` `rules`。
 
 ## 5. Blind isolation rules
 
@@ -187,7 +187,9 @@ threshold 或 actual 為 null ⇒ `status: 'skipped'`（不判 fail）。Composi
 | 5 | `EVALUATOR` | blind/heuristic 回答不符 schema 或 `screen_id` 不符 |
 | 6 | `PRIVACY` | leakage violation 或未 opt-in 就要上傳截圖 |
 
-## 7. Fix-and-verify loop
+## 7. Fix-and-verify loop (with AutoFlow handoff)
+
+### 7a. Manual fix path
 
 1. 從 `audit.json` 取該 finding 的 `fix_brief`（`intent` / `acceptance[]` / `suggested_change` /
    `rule_ids[]` / `target`），交給實作端（`frontend-design`、`ui-ux-pro-max` 或實作 agent）。本 skill 不寫設計建議。
@@ -201,6 +203,97 @@ threshold 或 actual 為 null ⇒ `status: 'skipped'`（不判 fail）。Composi
 3. 得到 `resolved` / `improved` / `unchanged` / `regressed` / `not-comparable`。**沒跑過 `verify` 就不算修好**；
    只重跑 deterministic 時 blind kind 會是 `not-comparable`，要 `resolved` 得重 dispatch evaluator
    → `references/fix-verify.md`。
+
+### 7b. AutoFlow handoff path
+
+After a canonical audit with `score` / `audit`, **the host skill-runtime MUST** prepare,
+claim, and dispatch findings through the installed `$autoflow` skill.
+
+**Mandatory host runtime contract:**
+
+```bash
+# 1. Prepare handoff items from the canonical audit.json:
+node "$SKILL_DIR/scripts/caveman.mjs" handoff prepare --run <run-id> --json
+
+# 2. If item_count > 0, atomically claim pending items and get a dispatch artifact:
+node "$SKILL_DIR/scripts/caveman.mjs" handoff claim --run <run-id> --json
+# → JSON output includes { dispatch_artifact_path, claims: [{key, claim_token, ...}] }
+
+# 3. For each nonempty unique dispatch artifact, invoke the installed $autoflow skill
+#    through the host skill runtime (NOT as a shell executable). The $autoflow skill
+#    receives the idea text containing the artifact path:
+#    $autoflow --handoff-only "Remediate the canonical Caveman handoff artifact at
+#    <absolute path to dispatch artifact>; preserve evidence and fix_brief for every
+#    item. Return the persisted AutoFlow flow_id."
+
+# 4. Read/receive the actual persisted AutoFlow flow_id, then record each key:
+node "$SKILL_DIR/scripts/caveman.mjs" handoff record \
+  --run <run-id> --key <run_id>:<finding_id> \
+  --flow-id <actual-autoflow-flow-id> --claim-token <claim_token>
+
+# 5. If dispatch fails, retry (up to 3 attempts):
+node "$SKILL_DIR/scripts/caveman.mjs" handoff retry --run <run-id> --key <key>
+
+# 6. After AutoFlow implements the fix, advance to implemented:
+node "$SKILL_DIR/scripts/caveman.mjs" handoff advance \
+  --run <run-id> --key <run_id>:<finding_id> --state implemented
+
+# 7. Mark as verification_required to request Caveman verify:
+node "$SKILL_DIR/scripts/caveman.mjs" handoff advance \
+  --run <run-id> --key <run_id>:<finding_id> --state verification_required
+
+# 8. For deterministic findings: run normal caveman verify, then finalize:
+node "$SKILL_DIR/scripts/caveman.mjs" verify --run <source-run> --finding <finding-id>
+node "$SKILL_DIR/scripts/caveman.mjs" handoff verify \
+  --run <source-run> --verify-run <verify-run> --key <key>
+
+# 9. For blind findings: re-dispatch fresh blind evaluators on the verify run,
+#    ingest/score them, then finalize:
+node "$SKILL_DIR/scripts/caveman.mjs" handoff verify \
+  --run <source-run> --verify-run <re-evaluated-run> --key <key>
+```
+
+**State vocabulary:** `pending` → `accepted` → `implemented` → `verification_required` → `verified`.
+AutoFlow may also set `failed` when dispatch or implementation fails.
+AutoFlow must **never** set Caveman finding `resolved`; only `caveman verify` on the same finding
+may establish `resolved` or `improved`.
+
+**Strict lifecycle:** `accepted` → `verification_required` is NOT allowed. The implementer must
+explicitly set `implemented` before `verification_required` can be reached.
+
+**Recursion suppression:** when `AUTOFLOW_EXECUTION_ID` or `CAVEMAN_INSIDE_AUTOFLOW=1` is set in
+the environment, `handoff prepare` suppresses itself and emits `suppressed_recursive` diagnostics
+instead of handoff items. This prevents Caveman from spawning a nested AutoFlow when it is
+already running inside one.
+
+**Atomic dispatch:** `handoff claim` creates per-key exclusive claim files (`.claim`) under
+`.caveman-ui-ux/runs/<run-id>/handoffs/claims/`. Claims expire after 24 hours; stale
+expired claims can be taken over. Active unexpired foreign claims are rejected.
+`recordHandoff` finalizes the claim (`.final` marker) on accepted/failed record with the
+matching claim token. `handoff retry` transitions failed→pending with attempt history
+capped at 3 retries; active claims block retry.
+
+**Idempotency:** each handoff item is keyed `<run_id>:<finding_id>`. Receipts are persisted under
+`.caveman-ui-ux/runs/<run-id>/handoffs/` using exclusive creation. Re-running `handoff prepare`
+does not duplicate receipts; `handoff record` merges into existing receipts.
+
+**Rollback contract:** each handoff item carries a `rollback` object describing how to restore
+the pre-fix HEAD. The contract is documentation only — it never directly resets or deletes source.
+
+**Audit binding:** `handoff claim` re-reads the canonical audit.json and verifies every item's
+`source_audit_sha256` matches. Tampered target/evidence/fix instructions are rejected even if
+the artifact repeats its own old hash.
+
+**Diagnostic receipts:** when a flow dispatch fails, record a diagnostic instead of a flow id:
+
+```bash
+echo '{"code":"TIMEOUT","message":"dispatch timeout"}' > /tmp/diag.json
+node "$SKILL_DIR/scripts/caveman.mjs" handoff record \
+  --run <run-id> --key <run_id>:<finding_id> \
+  --claim-token <claim_token> --diagnostic-file /tmp/diag.json
+```
+
+The command exits non-zero (2) on contract/dispatch failure without dropping or resolving the finding.
 
 ## 8. CI usage
 

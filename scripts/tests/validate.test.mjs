@@ -9,7 +9,7 @@ import { getValidator, validateFile, validateSubset } from '../lib/validate.mjs'
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const schemasDir = join(here, '..', '..', 'schemas');
-const SCHEMA_FILES = ['config.schema.json', 'blind.schema.json', 'audit.schema.json'];
+const SCHEMA_FILES = ['config.schema.json', 'blind.schema.json', 'audit.schema.json', 'handoff.schema.json'];
 const UNSAT = Symbol('unsatisfiable');
 
 function keywords(result) {

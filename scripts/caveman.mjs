@@ -33,6 +33,7 @@ import {
   median, multilingualScore, SEVERITY_ORDER, evaluateGates, technicalScore,
 } from './lib/scoring.mjs';
 import { validateFile, validateSubset } from './lib/validate.mjs';
+import { claimHandoff, persistHandoffArtifact, prepareHandoff, recordHandoff, retryHandoff, transitionToImplemented, transitionToVerificationRequired, validateAudit, validateDiagnostic, validateLifecycleSourceBinding, verifyHandoff } from './lib/handoff.mjs';
 
 const SKILL_VERSION = '1.0.0';
 const AUDIT_SCHEMA_VERSION = 1;
@@ -49,7 +50,7 @@ const NOTICES = [
 const VALUE_FLAGS = new Set([
   'config', 'cwd', 'run', 'agents', 'base-url', 'routes', 'locales', 'viewports',
   'screen', 'evaluators', 'evaluator', 'model', 'file', 'locale', 'finding',
-  'retention-days',
+  'retention-days', 'key', 'flow-id', 'diagnostic-file', 'state', 'claim-token', 'verify-run', 'repo',
 ]);
 // Options that may repeat and always land in an array.
 const REPEATABLE_FLAGS = new Set(['finding']);
@@ -656,6 +657,7 @@ async function buildAudit(ctx, runId, { noLlm = false, allowMissingTechnical = f
   // Stage E findings arrive as an ingested artifact, never computed here.
   const heuristicDoc = noLlm ? null : readJsonIfExists(join(runDir(ctx.cwd, runId), 'heuristic.json'));
   const heuristicFindings = Array.isArray(heuristicDoc?.findings) ? heuristicDoc.findings : [];
+  const disabledRules = new Set((Array.isArray(config?.rules?.disabled) ? config.rules.disabled : []).map(String));
   findings.push(...heuristicFindings);
 
   // Stage F multilingual matrix.
@@ -665,7 +667,6 @@ async function buildAudit(ctx, runId, { noLlm = false, allowMissingTechnical = f
   // Contract §4: config.rules is applied once, here, where the findings of all four
   // producers (axe, checks, heuristic, multilingual) meet — so disabling or re-grading a
   // rule works no matter which stage emitted it.
-  const disabledRules = new Set((Array.isArray(config?.rules?.disabled) ? config.rules.disabled : []).map(String));
   const enabled = [];
   let suppressed = 0;
   for (const finding of findings) {
@@ -695,6 +696,22 @@ async function buildAudit(ctx, runId, { noLlm = false, allowMissingTechnical = f
       continue;
     }
     kept.push(finding);
+  }
+  // Per-screen heuristic scores use the same final cohort as audit.findings:
+  // disabled rules, severity overrides, and AC-005 evidence dropping have all applied.
+  const keptHeuristicFindings = kept.filter((finding) => finding.kind === 'heuristic');
+  const evaluatedScreenIds = new Set(Array.isArray(heuristicDoc?.evaluated_screen_ids) ? heuristicDoc.evaluated_screen_ids : []);
+  for (const screen of perScreen) {
+    const viewportId = typeof screen.viewport === 'string' ? screen.viewport : screen.viewport?.id;
+    const scoped = keptHeuristicFindings.filter((finding) => {
+      const target = finding.target || {};
+      return normalizeRoute(target.normalized_route ?? target.route ?? '/') === normalizeRoute(screen.normalized_route ?? screen.route ?? '/')
+        && target.locale === screen.locale
+        && (target.viewport == null || target.viewport === viewportId);
+    });
+    screen.scores.heuristic_ux = heuristicDoc !== null && screen.status === 'ok' && evaluatedScreenIds.has(screen.screen_id)
+      ? heuristicScore(scoped)
+      : null;
   }
   // per_screen.finding_ids must resolve inside audit.findings, so it loses the same ids.
   const keptIds = new Set(kept.map((finding) => finding.id));
@@ -1297,7 +1314,16 @@ const COMMANDS = {
       const manifest = await readRunManifest(ctx.cwd, runId);
       const data = await readJsonInput(ctx.flags.file, 'heuristic ingest');
       const incoming = Array.isArray(data?.findings) ? data.findings : null;
-      if (!incoming) fail('heuristic ingest expects a JSON object shaped { "findings": [ ... ] }', EXIT.EVALUATOR, {});
+      const evaluatedScreenIds = Array.isArray(data?.evaluated_screen_ids) ? data.evaluated_screen_ids : null;
+      if (!incoming || !evaluatedScreenIds) fail('heuristic ingest expects { "evaluated_screen_ids": [ ... ], "findings": [ ... ] }', EXIT.EVALUATOR, {});
+      if (new Set(evaluatedScreenIds).size !== evaluatedScreenIds.length) {
+        fail('heuristic ingest evaluated_screen_ids must be unique', EXIT.EVALUATOR, {});
+      }
+      const manifestScreenIds = new Set((manifest.screens || []).map((screen) => screen.screen_id));
+      const unknownCoverage = evaluatedScreenIds.filter((id) => !manifestScreenIds.has(id));
+      if (unknownCoverage.length > 0) {
+        fail(`heuristic ingest references unknown evaluated_screen_ids: ${unknownCoverage.join(', ')}`, EXIT.EVALUATOR, { unknown_screen_ids: unknownCoverage });
+      }
 
       // The Finding shape comes straight out of audit.schema.json; `id` is relaxed
       // because heuristicFindingId assigns it here when the agent omitted it.
@@ -1305,8 +1331,9 @@ const COMMANDS = {
       const findingDef = auditSchema.$defs.finding;
       const incomingSchema = {
         type: 'object',
-        required: ['findings'],
+        required: ['evaluated_screen_ids', 'findings'],
         properties: {
+          evaluated_screen_ids: { type: 'array', uniqueItems: true, items: { type: 'string' } },
           findings: {
             type: 'array',
             items: { ...findingDef, required: (findingDef.required || []).filter((key) => key !== 'id') },
@@ -1314,10 +1341,30 @@ const COMMANDS = {
         },
         $defs: auditSchema.$defs,
       };
-      const validation = validateSubset(incomingSchema, { findings: incoming });
+      const validation = validateSubset(incomingSchema, { evaluated_screen_ids: evaluatedScreenIds, findings: incoming });
       if (!validation.valid) {
         const detail = validation.errors.map((error) => `${error.path || '(root)'}: ${error.message}`).join('\n  - ');
         fail(`heuristic findings failed validation:\n  - ${detail}`, EXIT.EVALUATOR, { errors: validation.errors });
+      }
+
+      const evaluatedSet = new Set(evaluatedScreenIds);
+      for (const finding of incoming) {
+        const target = finding.target || {};
+        const normalizedRoute = normalizeRoute(target.normalized_route ?? target.route ?? '/');
+        const covered = (manifest.screens || []).some((screen) => {
+          const viewportId = typeof screen.viewport === 'string' ? screen.viewport : screen.viewport?.id;
+          return evaluatedSet.has(screen.screen_id)
+            && (!target.screen_id || target.screen_id === screen.screen_id)
+            && screen.normalized_route === normalizedRoute
+            && screen.locale === target.locale
+            && (target.viewport == null || target.viewport === viewportId);
+        });
+        if (!covered) {
+          fail(`heuristic finding ${finding.rule_id} targets a screen coordinate not covered by evaluated_screen_ids`, EXIT.EVALUATOR, {
+            rule_id: finding.rule_id,
+            target: { ...target, normalized_route: normalizedRoute },
+          });
+        }
       }
 
       // pipeline.md Stage E: a rule id that is in no pack has no severity, no dimension and no
@@ -1340,16 +1387,20 @@ const COMMANDS = {
       const findings = incoming.map((finding) => {
         // rule_version is provenance, so it comes from the pack rather than from the agent.
         const ruleVersion = String(ruleById.get(String(finding.rule_id))?.version ?? HEURISTIC_RULE_VERSION);
+        const target = {
+          ...(finding.target || {}),
+          normalized_route: normalizeRoute(finding.target?.normalized_route ?? finding.target?.route ?? '/'),
+        };
         if (typeof finding.id === 'string' && /^[0-9a-f]{16}$/.test(finding.id)) {
-          return { status: 'open', ...finding, rule_version: ruleVersion };
+          return { status: 'open', ...finding, target, rule_version: ruleVersion };
         }
-        const target = finding.target || {};
         const screen = target.screen_id ? byScreen.get(target.screen_id) : null;
         const region = (Array.isArray(finding.evidence) ? finding.evidence : [])
           .find((evidence) => evidence?.type === 'screenshot_region')?.box ?? null;
         return {
           status: 'open',
           ...finding,
+          target,
           rule_version: ruleVersion,
           id: heuristicFindingId({
             ruleId: finding.rule_id,
@@ -1366,7 +1417,7 @@ const COMMANDS = {
       if (existsSync(path) && !ctx.flags.force) {
         fail(`${path} already exists; pass --force to replace the ingested heuristic findings`, EXIT.EVALUATOR, { path });
       }
-      writeJson(path, { run_id: runId, ingested_at: new Date().toISOString(), findings });
+      writeJson(path, { run_id: runId, ingested_at: new Date().toISOString(), evaluated_screen_ids: evaluatedScreenIds, findings });
       ctx.log(`stored ${findings.length} heuristic findings`);
       ctx.emit(
         { command: 'heuristic ingest', run_id: runId, path, count: findings.length, finding_ids: findings.map((finding) => finding.id) },
@@ -1536,6 +1587,7 @@ const COMMANDS = {
         previous: previousAudit.findings || [],
         current: audit.findings || [],
         currentScreens: audit.run.screens || [],
+        currentAudit: audit,
         only,
       });
 
@@ -1563,6 +1615,34 @@ const COMMANDS = {
       };
       writeJson(join(runDir(ctx.cwd, runId), 'verify.json'), verifyDoc);
 
+      // Advance matching verification_required receipts for the previous run.
+      const handoffResults = { verified: [], skipped: [], errors: [] };
+      const handoffsDir = join(previousDir, 'handoffs');
+      if (existsSync(handoffsDir)) {
+        for (const entry of diff.entries) {
+          if (!entry.id) continue; // Only process findings that existed in the previous run.
+          const key = `${previousRunId}:${entry.id}`;
+          try {
+            const receipt = verifyHandoff({ cwd: ctx.cwd, runId: previousRunId, verifyRunId: runId, key });
+            handoffResults.verified.push({ key, verify_status: receipt.verify_status });
+            ctx.log(`handoff verify: ${key} → ${receipt.state} (${receipt.verify_status})`);
+          } catch (err) {
+            if (err.code === 'RECEIPT_NOT_FOUND' || err.code === 'VERIFY_INVALID_STATE') {
+              // No receipt or not in verification_required — skip silently.
+              handoffResults.skipped.push({ key, reason: err.code });
+            } else if (err.code === 'VERIFY_STATUS_REJECTED' || err.code === 'VERIFY_REGRESSION'
+              || err.code === 'VERIFY_FINDING_NOT_FOUND' || err.code === 'VERIFY_STATUS_INVALID') {
+              // Expected rejection — not an internal error.
+              handoffResults.skipped.push({ key, reason: err.code });
+            } else {
+              // Internal error — must make the command nonzero.
+              handoffResults.errors.push({ key, error: err.message, code: err.code });
+              ctx.log(`handoff verify error: ${key} — ${err.message}`);
+            }
+          }
+        }
+      }
+
       const written = await writeRunReports(ctx, runId, audit, {
         locale: ctx.flags.locale || null,
         inlineScreenshots: Boolean(ctx.flags['inline-screenshots']),
@@ -1580,13 +1660,19 @@ const COMMANDS = {
           recaptured,
           targets: totalTargets,
           gates: audit.gates,
+          handoff: handoffResults,
         },
         [
           `verify ${previousRunId} -> ${runId} (re-captured ${recaptured} of ${totalTargets} coordinates)`,
           Object.entries(diff.summary).map(([status, count]) => `${status}=${count}`).join(' '),
           `report: ${written.markdown}`,
-        ],
+          handoffResults.verified.length > 0
+            ? `handoff: ${handoffResults.verified.length} verified, ${handoffResults.skipped.length} skipped, ${handoffResults.errors.length} errors`
+            : null,
+        ].filter(Boolean),
       );
+      // Internal receipt errors make the command nonzero.
+      if (handoffResults.errors.length > 0) return EXIT.CONFIG;
       if (!ctx.flags.ci) return EXIT.OK;
       return audit.gates.exit_code;
     },
@@ -1661,6 +1747,299 @@ const COMMANDS = {
       return EXIT.OK;
     },
   },
+
+
+  'handoff prepare': {
+    describe: 'prepare handoff items from the canonical audit.json',
+    async run(ctx) {
+      const runId = resolveRunId(ctx);
+      const handoff = prepareHandoff({ cwd: ctx.cwd, runId, repo: ctx.flags.repo || null, env: process.env });
+      const pending = handoff.items.length;
+      if (pending > 0) {
+        const artifactPath = persistHandoffArtifact(ctx.cwd, runId, handoff);
+        ctx.log(`handoff artifact written: ${artifactPath}`);
+      }
+      ctx.emit(
+        {
+          command: 'handoff prepare',
+          run_id: runId,
+          suppressed_recursive: handoff.suppressed_recursive,
+          suppressed_reason: handoff.suppressed_reason || null,
+          items: handoff.items,
+          item_count: handoff.items.length,
+          diagnostics: handoff.diagnostics,
+        },
+        [
+          handoff.suppressed_recursive
+            ? `handoff suppressed (${handoff.suppressed_reason})`
+            : `${pending} handoff item(s) prepared`,
+          handoff.diagnostics.length > 0
+            ? `${handoff.diagnostics.length} diagnostic(s): ${handoff.diagnostics.map((d) => d.type).join(', ')}`
+            : null,
+        ].filter(Boolean),
+      );
+      return EXIT.OK;
+    },
+  },
+
+  'handoff record': {
+    describe: 'record a flow id or diagnostic against a handoff key',
+    async run(ctx) {
+      const runId = resolveRunId(ctx);
+      const key = ctx.flags.key || ctx.positional[0];
+      const flowId = ctx.flags['flow-id'] || null;
+      const diagnosticFile = ctx.flags['diagnostic-file'] || null;
+
+      if (!key) {
+        fail(
+          'handoff record requires --key <run_id>:<finding_id>',
+          EXIT.CONFIG,
+          {},
+        );
+      }
+
+      if (!flowId && !diagnosticFile) {
+        fail(
+          'handoff record requires --flow-id <id> or --diagnostic-file <path>',
+          EXIT.CONFIG,
+          {},
+        );
+      }
+      if (flowId && diagnosticFile) {
+        fail(
+          'handoff record requires exactly one of --flow-id or --diagnostic-file, not both',
+          EXIT.CONFIG,
+          {},
+        );
+      }
+
+      let diagnostic = null;
+      if (diagnosticFile) {
+        if (!existsSync(diagnosticFile)) {
+          fail(
+            `diagnostic file not found: ${diagnosticFile}`,
+            EXIT.CONFIG,
+            { path: diagnosticFile },
+          );
+        }
+        try {
+          diagnostic = readJson(diagnosticFile);
+        } catch {
+          fail(
+            `diagnostic file is not valid JSON: ${diagnosticFile}`,
+            EXIT.CONFIG,
+            { path: diagnosticFile },
+          );
+        }
+        const validation = validateDiagnostic(diagnostic);
+        if (!validation.valid) {
+          fail(
+            `invalid diagnostic: ${validation.error}`,
+            EXIT.CONFIG,
+            { diagnostic },
+          );
+        }
+      }
+
+      const receipt = recordHandoff({
+        cwd: ctx.cwd, runId, key, flowId, diagnostic,
+        claimToken: ctx.flags['claim-token'] || null,
+        autoflowStateDir: process.env.CAVEMAN_AUTOFLOW_STATE_DIR || undefined,
+      });
+      ctx.log(`handoff recorded: ${key} → ${receipt.state}`);
+      ctx.emit(
+        {
+          command: 'handoff record',
+          run_id: runId,
+          key,
+          state: receipt.state,
+          flow_id: receipt.flow_id || null,
+          diagnostic: receipt.diagnostic || null,
+        },
+        [`handoff ${key} recorded as ${receipt.state}${receipt.flow_id ? ` (flow: ${receipt.flow_id})` : ''}`],
+      );
+      if (diagnostic && receipt.state === 'failed') {
+        return EXIT.CONFIG;
+      }
+      return EXIT.OK;
+    },
+  },
+
+  'handoff advance': {
+    describe: 'advance a handoff receipt to implemented or verification_required',
+    async run(ctx) {
+      const runId = resolveRunId(ctx);
+      const key = ctx.flags.key || ctx.positional[0];
+      const state = ctx.flags.state || null;
+
+      if (!key) {
+        fail('handoff advance requires --key <run_id>:<finding_id>', EXIT.CONFIG, {});
+      }
+
+      const VALID_STATES = ['implemented', 'verification_required'];
+      if (!state || !VALID_STATES.includes(state)) {
+        fail(
+          `handoff advance requires --state ${VALID_STATES.join('|')}`,
+          EXIT.CONFIG,
+          { state },
+        );
+      }
+
+      let receipt;
+      if (state === 'implemented') {
+        receipt = transitionToImplemented({ cwd: ctx.cwd, runId, key });
+      } else {
+        receipt = transitionToVerificationRequired({ cwd: ctx.cwd, runId, key });
+      }
+
+      ctx.log(`handoff advance: ${key} → ${receipt.state}`);
+      ctx.emit(
+        {
+          command: 'handoff advance',
+          run_id: runId,
+          key,
+          state: receipt.state,
+        },
+        [`handoff ${key} advanced to ${receipt.state}`],
+      );
+      return EXIT.OK;
+    },
+  },
+
+  'handoff claim': {
+    describe: 'atomically claim pending items and write a token-bound dispatch artifact',
+    async run(ctx) {
+      const runId = resolveRunId(ctx);
+      const result = claimHandoff(ctx.cwd, runId);
+      ctx.log(`handoff claim: ${result.claims.length} item(s) claimed, written to ${result.dispatch_artifact_path}`);
+      ctx.emit(
+        {
+          command: 'handoff claim',
+          run_id: runId,
+          dispatch_artifact_path: result.dispatch_artifact_path,
+          claims: result.claims,
+          unclaimed: result.unclaimed,
+        },
+        [
+          `dispatch artifact: ${result.dispatch_artifact_path}`,
+          ...result.claims.map((c) => `  ${c.key} → token ${c.claim_token}`),
+          ...result.unclaimed.map((k) => `  ${k} — already claimed`),
+        ],
+      );
+      return EXIT.OK;
+    },
+  },
+
+  'handoff retry': {
+    describe: 'retry a failed handoff key (failed → pending) with attempt cap',
+    async run(ctx) {
+      const runId = resolveRunId(ctx);
+      const key = ctx.flags.key || ctx.positional[0];
+
+      if (!key) {
+        fail('handoff retry requires --key <run_id>:<finding_id>', EXIT.CONFIG, {});
+      }
+
+      const receipt = retryHandoff(ctx.cwd, runId, key);
+      ctx.log(`handoff retry: ${key} → ${receipt.state}`);
+      ctx.emit(
+        {
+          command: 'handoff retry',
+          run_id: runId,
+          key,
+          state: receipt.state,
+          attempts: receipt.attempts?.length || 0,
+        },
+        [`handoff ${key} retried to ${receipt.state} (attempt ${receipt.attempts?.length || 0}/3)`],
+      );
+      return EXIT.OK;
+    },
+  },
+
+  'handoff verify': {
+    describe: 'verify a handoff key against a re-evaluated verify run',
+    async run(ctx) {
+      const runId = resolveRunId(ctx);
+      const key = ctx.flags.key || ctx.positional[0];
+      const verifyRunId = ctx.flags['verify-run'] || null;
+
+      if (!key) {
+        fail('handoff verify requires --key <run_id>:<finding_id>', EXIT.CONFIG, {});
+      }
+      if (!verifyRunId) {
+        fail('handoff verify requires --verify-run <run-id>', EXIT.CONFIG, {});
+      }
+
+      // Load source and current audits, recompute the finding diff.
+      const sourceDir = runDir(ctx.cwd, runId);
+      const verifyDir = runDir(ctx.cwd, verifyRunId);
+      const sourceAuditPath = join(sourceDir, 'audit.json');
+      const currentAuditPath = join(verifyDir, 'audit.json');
+
+      if (!existsSync(sourceAuditPath)) {
+        fail(`source audit not found at ${sourceAuditPath}`, EXIT.CONFIG, { path: sourceAuditPath });
+      }
+      if (!existsSync(currentAuditPath)) {
+        fail(`current audit not found at ${currentAuditPath}`, EXIT.CONFIG, { path: currentAuditPath });
+      }
+
+      const sourceAudit = readJson(sourceAuditPath);
+      const currentAudit = readJson(currentAuditPath);
+      validateAudit(currentAudit, verifyRunId);
+
+      validateLifecycleSourceBinding({ cwd: ctx.cwd, runId, key });
+
+      // Extract the finding ID from the key.
+      const findingId = key.split(':').pop();
+      const diff = diffFindings({
+        previous: sourceAudit.findings || [],
+        current: currentAudit.findings || [],
+        currentScreens: currentAudit.run?.screens || [],
+        currentAudit: currentAudit,
+        only: new Set([findingId]),
+      });
+
+      // Merge into the canonical verify.json for this exact source/current pair.
+      // Per-key handoff verification must not erase results recorded for sibling findings.
+      const verifyPath = join(verifyDir, 'verify.json');
+      const priorVerify = existsSync(verifyPath) ? readJson(verifyPath) : null;
+      const priorEntries = priorVerify?.previous_run === runId && priorVerify?.run_id === verifyRunId
+        && Array.isArray(priorVerify.findings) ? priorVerify.findings : [];
+      const mergedById = new Map(priorEntries.map((entry) => [entry.id, entry]));
+      for (const entry of diff.entries) mergedById.set(entry.id, entry);
+      const mergedEntries = [...mergedById.values()];
+      const mergedSummary = { resolved: 0, improved: 0, unchanged: 0, regressed: 0, not_comparable: 0, open: 0 };
+      for (const entry of mergedEntries) mergedSummary[entry.status] = (mergedSummary[entry.status] ?? 0) + 1;
+      const verifyDoc = {
+        schema_version: AUDIT_SCHEMA_VERSION,
+        tool: { name: 'caveman-ui-ux', version: SKILL_VERSION },
+        previous_run: runId,
+        run_id: verifyRunId,
+        compared: mergedEntries.length,
+        summary: mergedSummary,
+        findings: mergedEntries,
+      };
+      writeJson(verifyPath, verifyDoc);
+
+      // Now call verifyHandoff with the recomputed verify.json.
+      const receipt = verifyHandoff({ cwd: ctx.cwd, runId, verifyRunId, key });
+      ctx.log(`handoff verify: ${key} → ${receipt.state}`);
+      ctx.emit(
+        {
+          command: 'handoff verify',
+          run_id: runId,
+          verify_run_id: verifyRunId,
+          key,
+          state: receipt.state,
+          verify_status: receipt.verify_status,
+          diff: diff.entries[0]?.status || null,
+        },
+        [`handoff ${key} verified as ${receipt.verify_status} (${receipt.state})`],
+      );
+      return EXIT.OK;
+    },
+  },
+
 };
 
 // ---------------------------------------------------------------------------
@@ -1732,19 +2111,86 @@ function findingTargets(previousAudit, only, auditPath) {
 }
 
 /** Diff two finding sets into the 5 verify statuses (contract §18). */
-function diffFindings({ previous, current, currentScreens, only }) {
+function diffFindings({ previous, current, currentScreens, currentAudit, only }) {
+  const requestedKeys = only
+    ? new Set(previous.filter((finding) => only.has(finding.id)).map(findingKey))
+    : null;
+  const eligiblePrevious = only
+    ? previous.filter((finding) => only.has(finding.id) || requestedKeys.has(findingKey(finding)))
+    : previous;
+  const assignments = new Map();
+  const usedCurrent = new Set();
   const currentById = new Map(current.map((finding) => [finding.id, finding]));
-  const currentByKey = new Map();
-  for (const finding of current) {
-    if (!currentByKey.has(findingKey(finding))) currentByKey.set(findingKey(finding), finding);
+  // Allocate exact IDs first so semantic fallback can never steal them.
+  for (const finding of eligiblePrevious) {
+    const exact = currentById.get(finding.id);
+    if (exact && !usedCurrent.has(exact)) {
+      assignments.set(finding, exact);
+      usedCurrent.add(exact);
+    }
+  }
+  const regionCenter = (finding) => {
+    const box = (finding.evidence || []).find((entry) => entry?.type === 'screenshot_region')?.box;
+    if (!box) return null;
+    const width = Number(box.w ?? box.width);
+    const height = Number(box.h ?? box.height);
+    if (![Number(box.x), Number(box.y), width, height].every(Number.isFinite)) return null;
+    return { x: Number(box.x) + width / 2, y: Number(box.y) + height / 2 };
+  };
+  for (const finding of eligiblePrevious) {
+    if (assignments.has(finding)) continue;
+    if (finding.kind !== 'blind' && finding.kind !== 'heuristic') continue;
+    const candidates = current.filter((candidate) => !usedCurrent.has(candidate) && findingKey(candidate) === findingKey(finding));
+    if (candidates.length === 0) continue;
+    const origin = regionCenter(finding);
+    const ranked = candidates.map((candidate, index) => {
+      const center = regionCenter(candidate);
+      const distance = origin && center ? Math.hypot(origin.x - center.x, origin.y - center.y) : Number.POSITIVE_INFINITY;
+      return { candidate, distance, index };
+    }).sort((a, b) => a.distance - b.distance || a.index - b.index);
+    assignments.set(finding, ranked[0].candidate);
+    usedCurrent.add(ranked[0].candidate);
   }
   const screenByCoord = new Map();
   for (const screen of currentScreens) {
     screenByCoord.set([screen.normalized_route, screen.locale, screen.viewport?.id].join('|'), screen);
   }
-  /** True when the previous coordinate was not re-measured in this run. */
-  const notComparable = (finding) => {
-    if (finding.kind === 'blind' || finding.kind === 'heuristic') return true;
+
+  /** Check if the current audit has fresh blind consensus for the matching coordinates. */
+  const hasFreshBlind = (finding) => {
+    const target = finding.target || {};
+    const coord = [target.normalized_route, target.locale, target.viewport].join('|');
+    const screen = screenByCoord.get(coord);
+    if (!screen || screen.status !== 'ok') return false;
+    // Check currentAudit.per_screen for non-null blind consensus.
+    const perScreen = Array.isArray(currentAudit?.per_screen) ? currentAudit.per_screen : [];
+    const entry = perScreen.find((e) => e.screen_id === screen.screen_id);
+    return entry && typeof entry.scores?.caveman === 'number' && entry.scores.caveman !== null;
+  };
+
+  /** Check if the current audit has heuristic evaluation evidence. */
+  const hasFreshHeuristic = (finding, semanticMatch) => {
+    const target = finding.target || {};
+    const route = normalizeRoute(target.normalized_route ?? target.route ?? '/');
+    const screens = currentScreens.filter((entry) => {
+      const sameViewport = target.viewport == null || entry.viewport?.id === target.viewport;
+      return entry.status === 'ok'
+        && normalizeRoute(entry.normalized_route ?? entry.route ?? '/') === route
+        && entry.locale === target.locale
+        && sameViewport;
+    });
+    if (screens.length === 0) return false;
+    const perScreen = Array.isArray(currentAudit?.per_screen) ? currentAudit.per_screen : [];
+    return screens.every((screen) => {
+      const evidence = perScreen.find((entry) => entry.screen_id === screen.screen_id);
+      return typeof evidence?.scores?.heuristic_ux === 'number';
+    });
+  };
+
+  /** True when the previous finding cannot be compared to the current audit. */
+  const notComparable = (finding, semanticMatch) => {
+    if (finding.kind === 'blind') return !hasFreshBlind(finding);
+    if (finding.kind === 'heuristic') return !hasFreshHeuristic(finding, semanticMatch);
     const target = finding.target || {};
     const screen = screenByCoord.get([target.normalized_route, target.locale, target.viewport].join('|'));
     if (!screen) return true;
@@ -1753,13 +2199,13 @@ function diffFindings({ previous, current, currentScreens, only }) {
 
   const entries = [];
   const seenCurrent = new Set();
-  for (const finding of previous) {
-    if (only && !only.has(finding.id)) continue;
+  for (const finding of eligiblePrevious) {
     const key = findingKey(finding);
-    const match = currentById.get(finding.id) || null;
+    const match = assignments.get(finding) || null;
+    if (only && !only.has(finding.id)) continue;
     if (match) seenCurrent.add(match.id);
     let status;
-    if (notComparable(finding)) status = 'not_comparable';
+    if (notComparable(finding, match)) status = 'not_comparable';
     else if (!match) status = 'resolved';
     else if (severityRank(match.severity) > severityRank(finding.severity)) status = 'improved';
     else if (severityRank(match.severity) < severityRank(finding.severity)) status = 'regressed';

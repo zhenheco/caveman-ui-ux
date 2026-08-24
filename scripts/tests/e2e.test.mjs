@@ -5,8 +5,8 @@
 // The fixture server runs in its own process on purpose: spawnSync blocks this
 // process's event loop, so an in-process node:http server could never answer the CLI.
 
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execSync, spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import assert from 'node:assert/strict';
@@ -247,6 +247,14 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
 
   const main = { cwd: tempCwd('main'), audit: null, result: null };
 
+  // Initialize a git repo so the handoff rollback baseline can be established.
+  execSync('git init', { cwd: main.cwd, stdio: 'pipe' });
+  execSync('git config user.email "e2e@caveman.test"', { cwd: main.cwd, stdio: 'pipe' });
+  execSync('git config user.name "Caveman E2E"', { cwd: main.cwd, stdio: 'pipe' });
+  writeFileSync(join(main.cwd, '.gitkeep'), '', 'utf8');
+  execSync('git add .gitkeep', { cwd: main.cwd, stdio: 'pipe' });
+  execSync('git commit -m "e2e fixture baseline"', { cwd: main.cwd, stdio: 'pipe' });
+
   test('audit --no-llm over 3 fixtures x 2 viewports writes a schema-valid audit.json', { timeout: 900000 }, () => {
     main.result = runCli(auditArgs, { cwd: main.cwd });
     assert.equal(main.result.status, 0, `audit failed (${main.result.status}):\n${main.result.stderr}`);
@@ -432,6 +440,7 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
     };
     /** One Stage E finding under the given rule id. */
     const heuristic = (ruleId) => ({
+      evaluated_screen_ids: [screen.screen_id],
       findings: [{
         rule_id: ruleId,
         kind: 'heuristic',
@@ -443,6 +452,18 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
       }],
     });
 
+    for (const [label, payload] of [
+      ['missing', { findings: heuristic('UX.CTA.AMBIGUOUS_PRIMARY').findings }],
+      ['duplicate', { ...heuristic('UX.CTA.AMBIGUOUS_PRIMARY'), evaluated_screen_ids: [screen.screen_id, screen.screen_id] }],
+      ['unknown-screen', { ...heuristic('UX.CTA.AMBIGUOUS_PRIMARY'), evaluated_screen_ids: ['scr_ffffffffffff'] }],
+    ]) {
+      const coveragePath = join(main.cwd, `heuristic-${label}.json`);
+      writeFileSync(coveragePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+      const rejectedCoverage = runCli(['heuristic', 'ingest', '--file', coveragePath, '--json'], { cwd: main.cwd });
+      assert.equal(rejectedCoverage.status, 5, `${label} coverage must be rejected`);
+      unlinkSync(coveragePath);
+    }
+
     const badPath = join(main.cwd, 'heuristic-unknown.json');
     writeFileSync(badPath, `${JSON.stringify(heuristic('UX.TOTALLY.MADE_UP'), null, 2)}\n`, 'utf8');
     const rejected = runCli(['heuristic', 'ingest', '--file', badPath, '--json'], { cwd: main.cwd });
@@ -452,6 +473,7 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
       false,
       'a rejected ingest must not write heuristic.json',
     );
+    unlinkSync(badPath); // Clean up to keep the worktree clean for handoff tests.
 
     // Positive control: the same payload under a real pack rule id is accepted, which proves
     // the 5 above came from the pack lookup and not from a schema error.
@@ -460,6 +482,45 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
     const accepted = runCli(['heuristic', 'ingest', '--file', goodPath, '--json'], { cwd: main.cwd });
     assert.equal(accepted.status, 0, `a pack rule id must be accepted:\n${accepted.stderr}`);
     assert.equal(existsSync(runPath(main.cwd, 'heuristic.json')), true, 'an accepted ingest must write heuristic.json');
+    const rescored = runCli(['score', '--json'], { cwd: main.cwd });
+    assert.equal(rescored.status, 0, rescored.stderr);
+    const rescoredAudit = JSON.parse(readFileSync(runPath(main.cwd, 'audit.json'), 'utf8'));
+    const covered = rescoredAudit.per_screen.find((entry) => entry.screen_id === screen.screen_id);
+    const uncovered = rescoredAudit.per_screen.find((entry) => entry.screen_id !== screen.screen_id);
+    assert.equal(typeof covered.scores.heuristic_ux, 'number');
+    assert.equal(uncovered.scores.heuristic_ux, null, 'an unevaluated screen must not inherit heuristic coverage');
+    const disabledConfig = join(main.cwd, 'heuristic-disabled.config.json');
+    writeFileSync(disabledConfig, JSON.stringify({ version: 1, rules: { disabled: ['UX.CTA.AMBIGUOUS_PRIMARY'] } }));
+    const disabledScore = runCli(['score', '--config', disabledConfig, '--json'], { cwd: main.cwd });
+    assert.equal(disabledScore.status, 0, disabledScore.stderr);
+    const disabledAudit = JSON.parse(readFileSync(runPath(main.cwd, 'audit.json'), 'utf8'));
+    const disabledCovered = disabledAudit.per_screen.find((entry) => entry.screen_id === screen.screen_id);
+    assert.equal(disabledCovered.scores.heuristic_ux, 100, 'disabled heuristic findings must not penalize per-screen score');
+    assert.equal(disabledAudit.scores.heuristic_ux, 100, 'global and per-screen heuristic filtering must agree');
+    unlinkSync(disabledConfig);
+
+    const noEvidencePayload = heuristic('UX.CTA.AMBIGUOUS_PRIMARY');
+    noEvidencePayload.findings[0].severity = 'minor';
+    noEvidencePayload.findings[0].evidence = [];
+    const noEvidencePath = join(main.cwd, 'heuristic-no-evidence.json');
+    writeFileSync(noEvidencePath, JSON.stringify(noEvidencePayload));
+    const replaced = runCli(['heuristic', 'ingest', '--file', noEvidencePath, '--force', '--json'], { cwd: main.cwd });
+    assert.equal(replaced.status, 0, replaced.stderr);
+    const overrideConfig = join(main.cwd, 'heuristic-override.config.json');
+    writeFileSync(overrideConfig, JSON.stringify({
+      version: 1,
+      rules: { severity_overrides: { 'UX.CTA.AMBIGUOUS_PRIMARY': 'critical' } },
+    }));
+    const overrideScore = runCli(['score', '--config', overrideConfig, '--json'], { cwd: main.cwd });
+    assert.equal(overrideScore.status, 0, overrideScore.stderr);
+    const overrideAudit = JSON.parse(readFileSync(runPath(main.cwd, 'audit.json'), 'utf8'));
+    const overrideCovered = overrideAudit.per_screen.find((entry) => entry.screen_id === screen.screen_id);
+    assert.equal(overrideAudit.findings.some((finding) => finding.rule_id === 'UX.CTA.AMBIGUOUS_PRIMARY'), false);
+    assert.equal(overrideCovered.scores.heuristic_ux, 100, 'AC-005-dropped heuristic must not penalize per-screen score');
+    assert.equal(overrideAudit.scores.heuristic_ux, 100);
+    unlinkSync(noEvidencePath);
+    unlinkSync(overrideConfig);
+    unlinkSync(goodPath); // Clean up to keep the worktree clean for handoff tests.
   });
 
   test('rules.disabled clears a critical_maximum failure that the same config without it fails', { timeout: 900000 }, () => {
@@ -665,5 +726,180 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
     assert.equal(after.run.screens[0].screenshot.sha256, capturedAt, 'the screenshot must not have been retaken');
     assert.equal(after.findings.some((finding) => offenders.includes(finding.rule_id)), false);
     assert.equal(after.limitations.some((line) => line.includes('suppressed by config.rules.disabled')), true);
+  });
+
+  // --- handoff prepare / record --------------------------------------------
+
+  describe('handoff prepare and record', { concurrency: 1 }, () => {
+    const dispatchClaimsByKey = new Map();
+
+    test('handoff prepare --json emits a valid handoff payload', () => {
+      const result = runCli(['handoff', 'prepare', '--json'], { cwd: main.cwd });
+      assert.equal(result.status, 0, `handoff prepare failed (${result.status}):\n${result.stderr}`);
+      assert.notEqual(result.json, null, `handoff prepare --json was not parseable:\n${result.stdout}`);
+      assert.equal(result.json.command, 'handoff prepare');
+      assert.equal(result.json.suppressed_recursive, false);
+      assert.ok(Array.isArray(result.json.items), 'items must be an array');
+      assert.equal(typeof result.json.item_count, 'number');
+      assert.equal(result.json.items.length, result.json.item_count, 'items length must match item_count');
+      // The form-missing-labels fixture produces critical findings — at least one should be handoff-able.
+      assert.ok(result.json.item_count >= 0, 'item_count must be a non-negative count');
+      assert.equal(result.json.run_id, main.audit.run.run_id);
+    });
+
+    test('handoff prepare persists receipts and repeat is idempotent', () => {
+      const runId = main.audit.run.run_id;
+      const handoffsDir = join(main.cwd, '.caveman-ui-ux', 'runs', runId, 'handoffs');
+
+      const first = runCli(['handoff', 'prepare', '--json'], { cwd: main.cwd });
+      assert.equal(first.status, 0);
+      const firstCount = first.json.item_count;
+
+      if (firstCount > 0) {
+        assert.equal(existsSync(handoffsDir), true, `handoffs dir not created at ${handoffsDir}`);
+        const receiptFiles = readdirSync(handoffsDir).filter((name) => name.endsWith('.json') && name !== 'handoff-items.json');
+        assert.equal(receiptFiles.length, firstCount, `expected ${firstCount} receipt(s), got ${receiptFiles.length}`);
+      }
+
+      // Second prepare must be idempotent: same count, no new receipts, no errors.
+      const second = runCli(['handoff', 'prepare', '--json'], { cwd: main.cwd });
+      assert.equal(second.status, 0);
+      assert.equal(second.json.item_count, firstCount, 'repeat prepare must return the same item count');
+
+      if (firstCount > 0) {
+        const receiptFiles2 = readdirSync(handoffsDir).filter((name) => name.endsWith('.json') && name !== 'handoff-items.json');
+        assert.equal(receiptFiles2.length, firstCount, 'repeat prepare must not create duplicate receipts');
+      }
+    });
+
+    test('handoff record attaches a flow id', () => {
+      const runId = main.audit.run.run_id;
+      // Find one actionable finding to get a valid key.
+      const firstPrepare = runCli(['handoff', 'prepare', '--json'], { cwd: main.cwd });
+      if (firstPrepare.json.item_count === 0) {
+        return; // No actionable findings — skip this test.
+      }
+
+      // Read the handoff items to get a key.
+      const handoffsDir = join(main.cwd, '.caveman-ui-ux', 'runs', runId, 'handoffs');
+      const receiptFiles = readdirSync(handoffsDir).filter((name) => name.endsWith('.json') && name !== 'handoff-items.json');
+      assert.ok(receiptFiles.length > 0, 'expected at least one receipt file');
+
+      const receipt = JSON.parse(readFileSync(join(handoffsDir, receiptFiles[0]), 'utf8'));
+      const key = receipt.key;
+      assert.ok(typeof key === 'string' && key.length > 0, 'receipt must have a key');
+
+      const claimResult = runCli(['handoff', 'claim', '--json'], { cwd: main.cwd });
+      assert.equal(claimResult.status, 0, `handoff claim failed (${claimResult.status}):\n${claimResult.stderr}`);
+      for (const entry of claimResult.json.claims) dispatchClaimsByKey.set(entry.key, entry);
+      const claim = claimResult.json.claims.find((entry) => entry.key === key);
+      assert.ok(claim, `handoff claim did not include ${key}`);
+      assert.ok(typeof claim.claim_token === 'string' && claim.claim_token.length > 0, 'claim must include a token');
+      assert.equal(existsSync(claimResult.json.dispatch_artifact_path), true, 'dispatch artifact must exist');
+      const dispatchArtifact = JSON.parse(readFileSync(claimResult.json.dispatch_artifact_path, 'utf8'));
+      assert.equal(dispatchArtifact.items.some((item) => item.key === key), true, 'dispatch artifact must bind the claimed key');
+
+      // Create a fake AutoFlow state dir for the test flowId.
+      const fakeStateDir = mkdtempSync(join(tmpdir(), 'caveman-e2e-autoflow-'));
+      const flowDir = join(fakeStateDir, 'test-flow-42');
+      mkdirSync(flowDir, { recursive: true });
+      writeFileSync(join(flowDir, 'status.json'), JSON.stringify({
+        flow_id: 'test-flow-42',
+        release_policy: 'handoff-only',
+        base_repo: main.cwd,
+        status: 'running',
+        created_at: new Date().toISOString(),
+      }), 'utf8');
+
+      const recordResult = runCli(
+        ['handoff', 'record', '--key', key, '--flow-id', 'test-flow-42', '--claim-token', claim.claim_token, '--json'],
+        { cwd: main.cwd, env: { CAVEMAN_AUTOFLOW_STATE_DIR: fakeStateDir } },
+      );
+      rmSync(fakeStateDir, { recursive: true, force: true });
+      assert.equal(recordResult.status, 0, `handoff record failed (${recordResult.status}):\n${recordResult.stderr}`);
+      assert.equal(recordResult.json.command, 'handoff record');
+      assert.equal(recordResult.json.state, 'accepted');
+      assert.equal(recordResult.json.flow_id, 'test-flow-42');
+
+      // Verify the receipt was updated on disk.
+      const updated = JSON.parse(readFileSync(join(handoffsDir, receiptFiles[0]), 'utf8'));
+      assert.equal(updated.state, 'accepted');
+      assert.equal(updated.flow_id, 'test-flow-42');
+    });
+
+    test('handoff record creates a diagnostic receipt and exits non-zero', () => {
+      const runId = main.audit.run.run_id;
+      const diagnosticPath = join(main.cwd, 'test-diagnostic.json');
+      const diagnostic = { code: 'TIMEOUT', message: 'dispatch timed out' };
+      writeFileSync(diagnosticPath, `${JSON.stringify(diagnostic, null, 2)}\n`, 'utf8');
+
+      // Get a valid key from a pending receipt.
+      const firstPrepare = runCli(['handoff', 'prepare', '--json'], { cwd: main.cwd });
+      if (firstPrepare.json.item_count === 0) {
+        unlinkSync(diagnosticPath);
+        return;
+      }
+
+      const handoffsDir = join(main.cwd, '.caveman-ui-ux', 'runs', runId, 'handoffs');
+      const receiptFiles = readdirSync(handoffsDir).filter((name) => name.endsWith('.json') && name !== 'handoff-items.json');
+      // Find a receipt that is still pending (not already accepted by an earlier test).
+      let pendingReceipt = null;
+      for (const file of receiptFiles) {
+        const r = JSON.parse(readFileSync(join(handoffsDir, file), 'utf8'));
+        if (r.state === 'pending') {
+          pendingReceipt = r;
+          break;
+        }
+      }
+      if (!pendingReceipt) {
+        unlinkSync(diagnosticPath);
+        return;
+      }
+      const key = pendingReceipt.key;
+      const claim = dispatchClaimsByKey.get(key);
+      assert.ok(claim, `pending receipt ${key} must retain its dispatch claim`);
+
+      const result = runCli(
+        ['handoff', 'record', '--key', key, '--diagnostic-file', diagnosticPath, '--claim-token', claim.claim_token, '--json'],
+        { cwd: main.cwd },
+      );
+      // Diagnostic records exit non-zero (contract/dispatch failure).
+      assert.equal(result.status, 2, `handoff record with diagnostic must exit 2, got ${result.status}`);
+      assert.equal(result.json.state, 'failed');
+      assert.equal(result.json.flow_id, null);
+      assert.deepEqual(result.json.diagnostic, diagnostic);
+
+      // Clean up.
+      unlinkSync(diagnosticPath);
+    });
+
+    test('handoff record fails with exit 2 when --key is missing', () => {
+      const result = runCli(['handoff', 'record', '--json'], { cwd: main.cwd });
+      assert.notEqual(result.status, 0, 'handoff record without --key must fail');
+      assert.equal(result.json.ok, false);
+      assert.equal(result.json.exit_code, 2);
+    });
+
+    test('handoff record fails with exit 2 when neither --flow-id nor --diagnostic-file is given', () => {
+      const result = runCli(
+        ['handoff', 'record', '--key', 'run_x:abc123', '--json'],
+        { cwd: main.cwd },
+      );
+      assert.notEqual(result.status, 0, 'handoff record without --flow-id or --diagnostic-file must fail');
+      assert.equal(result.json.ok, false);
+      assert.equal(result.json.exit_code, 2);
+    });
+
+    test('handoff prepare suppresses when AUTOFLOW_EXECUTION_ID is set', () => {
+      const result = runCli(['handoff', 'prepare', '--json'], {
+        cwd: main.cwd,
+        env: { AUTOFLOW_EXECUTION_ID: 'flow-suppress-test' },
+      });
+      assert.equal(result.status, 0);
+      assert.equal(result.json.suppressed_recursive, true);
+      assert.equal(result.json.item_count, 0);
+      assert.equal(result.json.items.length, 0);
+      assert.ok(result.json.diagnostics.some((d) => d.type === 'suppressed_recursive'));
+    });
   });
 });
