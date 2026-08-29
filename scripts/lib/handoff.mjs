@@ -25,6 +25,13 @@ export function handoffSchema() {
   return _handoffSchema;
 }
 
+const AUDIT_SCHEMA_PATH = join(SKILL_ROOT, 'schemas', 'audit.schema.json');
+let _auditSchema = null;
+export function auditSchema() {
+  if (!_auditSchema) _auditSchema = JSON.parse(readFileSync(AUDIT_SCHEMA_PATH, 'utf8'));
+  return _auditSchema;
+}
+
 // The handoff states AutoFlow may record.
 export const HANDOFF_STATES = ['pending', 'accepted', 'failed', 'implemented', 'verification_required', 'verified'];
 
@@ -153,6 +160,15 @@ export function validateAudit(audit, expectedRunId) {
       `audit run_id mismatch: expected ${expectedRunId}, got ${run.run_id}`,
     );
     error.code = 'AUDIT_RUN_MISMATCH';
+    throw error;
+  }
+  const validation = validateSubset(auditSchema(), audit);
+  if (!validation.valid) {
+    const detail = validation.errors
+      .map((e) => `${e.path || '(root)'}: ${e.message}`)
+      .join('; ');
+    const error = new Error(`audit.json schema validation failed: ${detail}`);
+    error.code = 'AUDIT_INVALID';
     throw error;
   }
   return audit;
