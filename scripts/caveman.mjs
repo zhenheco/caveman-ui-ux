@@ -707,7 +707,8 @@ async function buildAudit(ctx, runId, { noLlm = false, allowMissingTechnical = f
       const target = finding.target || {};
       return normalizeRoute(target.normalized_route ?? target.route ?? '/') === normalizeRoute(screen.normalized_route ?? screen.route ?? '/')
         && target.locale === screen.locale
-        && (target.viewport == null || target.viewport === viewportId);
+        && (target.viewport == null || target.viewport === viewportId)
+        && (target.screen_id == null || target.screen_id === screen.screen_id);
     });
     screen.scores.heuristic_ux = heuristicDoc !== null && screen.status === 'ok' && evaluatedScreenIds.has(screen.screen_id)
       ? heuristicScore(scoped)

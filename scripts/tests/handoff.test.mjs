@@ -167,9 +167,33 @@ function makeAudit(findings, runId = 'run_20260824T120000Z_aaaaaa') {
   return {
     schema_version: 1,
     tool: { name: 'caveman-ui-ux', version: '1.0.0' },
-    run: { run_id: runId },
+    run: {
+      run_id: runId,
+      started_at: '2026-08-24T12:00:00Z',
+      cwd: '/tmp/caveman-test',
+      config_hash: '0000000000000000',
+      report_locale: 'en',
+      tool_versions: {
+        node: 'v22.0.0',
+        playwright: '1.50.0',
+        browser: 'chrome 130',
+        axe_core: '4.10.0',
+      },
+      stages_completed: ['A', 'B', 'D', 'F', 'G'],
+      screens: [],
+    },
+    config: {},
+    targets: [],
+    scores: {
+      caveman: null,
+      heuristic_ux: null,
+      accessibility: null,
+      technical: null,
+      multilingual_consistency: null,
+      evaluator_confidence: null,
+      evaluator_dispersion: null,
+    },
     findings,
-    scores: {},
     gates: { pass: false, results: [], exit_code: 0 },
     limitations: [],
     notices: [],
@@ -282,6 +306,48 @@ test('validateAudit throws on missing run.run_id', () => {
 test('validateAudit throws on run_id mismatch', () => {
   const audit = makeAudit([]);
   assert.throws(() => validateAudit(audit, 'run_wrong'), { code: 'AUDIT_RUN_MISMATCH' });
+});
+
+test('validateAudit throws AUDIT_INVALID with path details for schema-invalid matching-run audit', () => {
+  const audit = makeAudit([]);
+  // Remove a required top-level field from an otherwise matching-run audit.
+  const { config, ...invalid } = audit;
+  assert.throws(
+    () => validateAudit(invalid, audit.run.run_id),
+    (err) => {
+      assert.equal(err.code, 'AUDIT_INVALID');
+      assert.ok(err.message.includes('schema validation failed'), `message must mention schema: ${err.message}`);
+      assert.ok(err.message.includes('/config'), `message must name the missing field path: ${err.message}`);
+      return true;
+    },
+  );
+});
+
+test('prepareHandoff throws AUDIT_INVALID and creates no handoffs directory for schema-invalid matching-run audit', () => {
+  const gitRepo = tempGitRepo();
+  try {
+    const runId = 'run_20260824T120000Z_c3d4e5';
+    const runPath = join(gitRepo.dir, '.caveman-ui-ux', 'runs', runId);
+    const valid = makeAudit([], runId);
+    // Remove a required field to make it schema-invalid.
+    const { config, ...invalid } = valid;
+    writeAudit(runPath, invalid);
+
+    assert.throws(
+      () => prepareHandoff({ cwd: gitRepo.dir, runId }),
+      (err) => {
+        assert.equal(err.code, 'AUDIT_INVALID');
+        assert.ok(err.message.includes('schema validation failed'), `message must mention schema: ${err.message}`);
+        return true;
+      },
+    );
+
+    // No handoffs directory or artifact or receipt was created.
+    const handoffsDir = join(runPath, 'handoffs');
+    assert.equal(existsSync(handoffsDir), false, 'handoffs directory must not be created for schema-invalid audit');
+  } finally {
+    rmSync(gitRepo.dir, { recursive: true, force: true });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1523,7 +1589,7 @@ test('prepareHandoff includes diagnostics for skipped findings', () => {
   try {
     const good = makeActionableFinding({ id: '1111111111111111' });
     const noEvidence = makeActionableFinding({ evidence: [], id: '2222222222222222', rule_id: 'R2' });
-    const noFix = makeActionableFinding({ fix_brief: null, id: '3333333333333333', rule_id: 'R3' });
+    const noFix = makeActionableFinding({ fix_brief: {}, id: '3333333333333333', rule_id: 'R3' });
     writeAudit(runPath, makeAudit([good, noEvidence, noFix]));
 
     const result = prepareHandoff({ cwd: gitRepo.dir, runId });
@@ -3437,7 +3503,7 @@ test('handoff verify matches a shifted finding id by semantic key', () => {
   try {
     writeAudit(runPath, makeAudit([previous], runId));
     const currentAudit = makeAudit([current], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     currentAudit.per_screen = [{ screen_id: 'scr_123456789abc', scores: { caveman: 80 } }];
     writeAudit(verifyPath, currentAudit);
     prepareBoundReceipt(dir, runId, previous, 'verification_required');
@@ -3464,7 +3530,7 @@ test('handoff verify does not semantic-match deterministic findings with changed
   try {
     writeAudit(runPath, makeAudit([previous], runId));
     const currentAudit = makeAudit([current], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     writeAudit(verifyPath, currentAudit);
     prepareBoundReceipt(dir, runId, previous, 'verification_required');
     const result = runHandoffCli(['handoff', 'verify', '--run', runId, '--key', `${runId}:${previous.id}`, '--verify-run', verifyRunId], dir);
@@ -3536,7 +3602,7 @@ test('handoff verify accepts improved heuristic only with recaptured coordinate-
   try {
     writeAudit(runPath, makeAudit([previous], runId));
     const currentAudit = makeAudit([current], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     currentAudit.per_screen = [{ screen_id: 'scr_123456789abc', scores: { heuristic_ux: 90 } }];
     currentAudit.scores.heuristic_ux = 90;
     writeAudit(verifyPath, currentAudit);
@@ -3560,8 +3626,8 @@ test('route-wide heuristic verification requires fresh coverage for every recapt
     writeAudit(runPath, makeAudit([previous], runId));
     const currentAudit = makeAudit([current], verifyRunId);
     currentAudit.run.screens = [
-      { screen_id: 'scr_111111111111', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' },
-      { screen_id: 'scr_222222222222', normalized_route: '/signup', locale: 'en', viewport: { id: 'desktop' }, status: 'ok' },
+      { screen_id: 'scr_111111111111', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' },
+      { screen_id: 'scr_222222222222', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'desktop', width: 1280, height: 800 }, url: 'https://example.com/signup', status: 'ok' },
     ];
     currentAudit.per_screen = [{ screen_id: 'scr_111111111111', scores: { heuristic_ux: 90 } }];
     writeAudit(verifyPath, currentAudit);
@@ -3597,7 +3663,7 @@ test('handoff verify merges multiple finding results into verify.json idempotent
       transitionToVerificationRequired({ cwd: dir, runId, key: claim.key });
     }
     const currentAudit = makeAudit([], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     writeAudit(verifyPath, currentAudit);
     for (const finding of [first, second]) {
       const key = `${runId}:${finding.id}`;
@@ -3789,7 +3855,7 @@ test('handoff verify assigns one current semantic finding to at most one previou
       transitionToVerificationRequired({ cwd: dir, runId, key: claim.key });
     }
     const currentAudit = makeAudit([current], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     currentAudit.per_screen = [{ screen_id: 'scr_123456789abc', scores: { caveman: 80 } }];
     writeAudit(verifyPath, currentAudit);
     for (const finding of [first, second]) runHandoffCli(['handoff', 'verify', '--run', runId, '--key', `${runId}:${finding.id}`, '--verify-run', verifyRunId], dir);
@@ -3820,7 +3886,7 @@ test('targeted handoff verify ignores unrelated previous findings during semanti
     transitionToVerificationRequired({ cwd: gitRepo.dir, runId, key: claim.key });
 
     const currentAudit = makeAudit([current], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     currentAudit.per_screen = [{ screen_id: 'scr_123456789abc', scores: { heuristic_ux: 90 } }];
     writeAudit(verifyPath, currentAudit);
     const result = runHandoffCli(['handoff', 'verify', '--run', runId, '--key', claim.key, '--verify-run', verifyRunId], gitRepo.dir);
@@ -3853,7 +3919,7 @@ test('handoff verify semantic allocation uses nearest screenshot region with w/h
       transitionToVerificationRequired({ cwd: dir, runId, key: claim.key });
     }
     const currentAudit = makeAudit([nearSecond, nearFirst], verifyRunId);
-    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' }, status: 'ok' }];
+    currentAudit.run.screens = [{ screen_id: 'scr_123456789abc', route: '/signup', normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 }, url: 'https://example.com/signup', status: 'ok' }];
     writeAudit(verifyPath, currentAudit);
     for (const finding of [first, second]) runHandoffCli(['handoff', 'verify', '--run', runId, '--key', `${runId}:${finding.id}`, '--verify-run', verifyRunId], dir);
     const entries = JSON.parse(readFileSync(join(verifyPath, 'verify.json'), 'utf8')).findings;
@@ -3874,8 +3940,8 @@ test('heuristic ingest requires unique known evaluated_screen_ids and persists p
       run_id: runId,
       config: {},
       screens: [
-        { screen_id: first, normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile' } },
-        { screen_id: second, normalized_route: '/other', locale: 'en', viewport: { id: 'mobile' } },
+        { screen_id: first, normalized_route: '/signup', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 } },
+        { screen_id: second, normalized_route: '/other', locale: 'en', viewport: { id: 'mobile', width: 375, height: 812 } },
       ],
     }));
     for (const payload of [
@@ -3921,7 +3987,7 @@ test('dispatch artifact validates against handoff schema', () => {
   const runPath = join(gitRepo.dir, '.caveman-ui-ux', 'runs', runId);
   try {
     const finding = makeActionableFinding();
-    writeAudit(runPath, makeAudit([finding]));
+    writeAudit(runPath, makeAudit([finding], runId));
     prepareHandoff({ cwd: gitRepo.dir, runId });
 
     const result = claimHandoff(gitRepo.dir, runId);

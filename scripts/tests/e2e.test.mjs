@@ -730,6 +730,79 @@ describe('caveman-ui-ux end-to-end pipeline', { skip: skipReason, concurrency: 1
 
   // --- handoff prepare / record --------------------------------------------
 
+  test('per-screen heuristic scoring targets by screen_id when set, cross-screen when absent', { timeout: 900000 }, () => {
+    // Find two screens with the same route and locale but different viewports.
+    const screens = main.audit.run.screens.filter((s) => s.status === 'ok');
+    const byRouteLocale = new Map();
+    for (const s of screens) {
+      const key = `${s.normalized_route}|${s.locale}`;
+      const list = byRouteLocale.get(key) || [];
+      list.push(s);
+      byRouteLocale.set(key, list);
+    }
+    let targetScreen = null;
+    let siblingScreen = null;
+    for (const [, list] of byRouteLocale) {
+      if (list.length >= 2) {
+        targetScreen = list[0];
+        siblingScreen = list[1];
+        break;
+      }
+    }
+    assert.ok(targetScreen, 'need at least two screens with same route/locale for the screen_id targeting test');
+    assert.ok(siblingScreen, 'need a sibling screen');
+
+    // Build a heuristic payload: viewport is null (cross-viewport), screen_id targets one screen.
+    // Severity major → penalty 8, so target_score = 92 and sibling_score = 100.
+    const heuristicPayload = {
+      evaluated_screen_ids: [targetScreen.screen_id, siblingScreen.screen_id],
+      findings: [{
+        rule_id: 'UX.CTA.AMBIGUOUS_PRIMARY',
+        kind: 'heuristic',
+        severity: 'major',
+        confidence: 0.8,
+        title: 'The primary action is ambiguous',
+        target: {
+          route: targetScreen.route,
+          normalized_route: targetScreen.normalized_route,
+          locale: targetScreen.locale,
+          viewport: null,
+          screen_id: targetScreen.screen_id,
+          url: targetScreen.url,
+        },
+        evidence: [{ type: 'manual_note', value: 'two buttons compete for the same emphasis' }],
+      }],
+    };
+
+    const heuristicPath = join(main.cwd, 'heuristic-screenid.json');
+    const persistedHeuristicPath = runPath(main.cwd, 'heuristic.json');
+    const priorHeuristic = existsSync(persistedHeuristicPath)
+      ? readFileSync(persistedHeuristicPath, 'utf8')
+      : null;
+    try {
+      writeFileSync(heuristicPath, `${JSON.stringify(heuristicPayload, null, 2)}\n`, 'utf8');
+      const ingestResult = runCli(['heuristic', 'ingest', '--file', heuristicPath, '--force', '--json'], { cwd: main.cwd });
+      assert.equal(ingestResult.status, 0, `heuristic ingest failed:\n${ingestResult.stderr}`);
+
+      const scoreResult = runCli(['score', '--json'], { cwd: main.cwd });
+      assert.equal(scoreResult.status, 0, `score failed:\n${scoreResult.stderr}`);
+
+      const rescoredAudit = JSON.parse(readFileSync(runPath(main.cwd, 'audit.json'), 'utf8'));
+      const targetEntry = rescoredAudit.per_screen.find((e) => e.screen_id === targetScreen.screen_id);
+      const siblingEntry = rescoredAudit.per_screen.find((e) => e.screen_id === siblingScreen.screen_id);
+      assert.equal(typeof targetEntry.scores.heuristic_ux, 'number', 'target screen must have a heuristic_ux score');
+      assert.equal(typeof siblingEntry.scores.heuristic_ux, 'number', 'sibling screen must have a heuristic_ux score');
+      assert.equal(targetEntry.scores.heuristic_ux, 92, 'target screen must be penalized by the screen_id-targeted finding');
+      assert.equal(siblingEntry.scores.heuristic_ux, 100, 'sibling screen must not be penalized when screen_id targets another');
+    } finally {
+      if (existsSync(heuristicPath)) unlinkSync(heuristicPath);
+      if (priorHeuristic === null) rmSync(persistedHeuristicPath, { force: true });
+      else writeFileSync(persistedHeuristicPath, priorHeuristic, 'utf8');
+      const restoredScore = runCli(['score', '--json'], { cwd: main.cwd });
+      assert.equal(restoredScore.status, 0, `failed to restore prior heuristic score:\n${restoredScore.stderr}`);
+    }
+  });
+
   describe('handoff prepare and record', { concurrency: 1 }, () => {
     const dispatchClaimsByKey = new Map();
 
